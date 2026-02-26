@@ -1,0 +1,17 @@
+{
+  "cxxNamespace": ["nitrolocationtracking"],
+  "ios": {
+    "iosModuleName": "NitroLocationTracking"
+  },
+  "android": {
+    "androidNamespace": ["nitrolocationtracking"],
+    "androidCxxLibName": "nitrolocationtracking"
+  },
+  "autolinking": {
+    "NitroLocationTracking": {
+      "swift": "NitroLocationTracking",
+      "kotlin": "NitroLocationTracking"
+    }
+  },
+  "ignorePaths": ["node_modules"]
+}
