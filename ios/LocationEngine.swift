@@ -48,9 +48,26 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     var isTracking: Bool { tracking }
 
     func getCurrentLocation(completion: @escaping (LocationData?) -> Void) {
-        locationManager.requestLocation()
-        // Store completion for delegate callback
+        // If we already have a recent location, return it immediately
+        if let lastLocation = locationManager.location {
+            let age: TimeInterval = Swift.abs(lastLocation.timestamp.timeIntervalSinceNow)
+            if age < 10.0 {
+                let data = LocationData(
+                    latitude: lastLocation.coordinate.latitude,
+                    longitude: lastLocation.coordinate.longitude,
+                    altitude: lastLocation.altitude,
+                    speed: max(lastLocation.speed, 0),
+                    bearing: max(lastLocation.course, 0),
+                    accuracy: lastLocation.horizontalAccuracy,
+                    timestamp: lastLocation.timestamp.timeIntervalSince1970 * 1000
+                )
+                completion(data)
+                return
+            }
+        }
+        // Otherwise request a fresh location
         pendingLocationCompletion = completion
+        locationManager.requestLocation()
     }
 
     private var pendingLocationCompletion: ((LocationData?) -> Void)?
@@ -97,50 +114,3 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 }
 
-//// Simple struct to pass location data between components
-//struct LocationData {
-//    let latitude: Double
-//    let longitude: Double
-//    let altitude: Double
-//    let speed: Double
-//    let bearing: Double
-//    let accuracy: Double
-//    let timestamp: Double
-//
-//    var id: String = ""
-//
-//    func toJSON() -> [String: Any] {
-//        return [
-//            "latitude": latitude,
-//            "longitude": longitude,
-//            "altitude": altitude,
-//            "speed": speed,
-//            "bearing": bearing,
-//            "accuracy": accuracy,
-//            "timestamp": timestamp
-//        ]
-//    }
-//}
-//
-//// Config structs
-//struct LocationConfig {
-//    let desiredAccuracy: String
-//    let distanceFilter: Double
-//    let intervalMs: Double
-//    let fastestIntervalMs: Double
-//    let stopTimeout: Double
-//    let stopOnTerminate: Bool
-//    let startOnBoot: Bool
-//    let foregroundNotificationTitle: String
-//    let foregroundNotificationText: String
-//}
-//
-//struct ConnectionConfig {
-//    let wsUrl: String
-//    let restUrl: String
-//    let authToken: String
-//    let reconnectIntervalMs: Double
-//    let maxReconnectAttempts: Double
-//    let batchSize: Double
-//    let syncIntervalMs: Double
-//}

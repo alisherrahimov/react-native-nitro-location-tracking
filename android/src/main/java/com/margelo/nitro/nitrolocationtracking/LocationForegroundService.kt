@@ -26,13 +26,15 @@ class LocationForegroundService : Service() {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
                 .createNotificationChannel(channel)
         }
+        // Must call startForeground immediately to avoid ForegroundServiceDidNotStartInTimeException
+        startForeground(NOTIFICATION_ID, buildNotification("Location Active", "Tracking your location"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val title = intent?.getStringExtra("title") ?: "Location Active"
         val text = intent?.getStringExtra("text") ?: "Tracking your location"
         when (intent?.action) {
-            ACTION_START -> startForeground(
+            ACTION_START, null -> startForeground(
                 NOTIFICATION_ID, buildNotification(title, text))
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
