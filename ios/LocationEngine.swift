@@ -86,8 +86,6 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             timestamp: location.timestamp.timeIntervalSince1970 * 1000
         )
       
-      
-        print(data,"dataaas")
 
         // Handle pending one-shot request
         if let completion = pendingLocationCompletion {
@@ -96,7 +94,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         // Save to SQLite immediately (offline-first)
-        dbWriter?.insert(data, rideId: currentRideId)
+//        dbWriter?.insert(data, rideId: currentRideId)
 
         // Notify JS via Nitro callback
         onLocation?(data)
