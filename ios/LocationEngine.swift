@@ -1,7 +1,15 @@
 import CoreLocation
 
 class LocationEngine: NSObject, CLLocationManagerDelegate {
+    /// Continuous tracking manager — only used for startUpdatingLocation / stopUpdatingLocation
     private let locationManager = CLLocationManager()
+    /// Separate one-shot manager so requestLocation() never kills startUpdatingLocation()
+    private lazy var oneShotManager: CLLocationManager = {
+        let mgr = CLLocationManager()
+        mgr.delegate = self
+        mgr.desiredAccuracy = kCLLocationAccuracyBest
+        return mgr
+    }()
     private var tracking = false
 
     var onLocation: ((LocationData) -> Void)?
@@ -65,9 +73,10 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                 return
             }
         }
-        // Otherwise request a fresh location
+        // Use a SEPARATE manager for one-shot requests so we never
+        // stop the continuous startUpdatingLocation() on locationManager.
         pendingLocationCompletion = completion
-        locationManager.requestLocation()
+        oneShotManager.requestLocation()
     }
 
     private var pendingLocationCompletion: ((LocationData?) -> Void)?
@@ -85,16 +94,16 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             accuracy: location.horizontalAccuracy,
             timestamp: location.timestamp.timeIntervalSince1970 * 1000
         )
-      
 
-        // Handle pending one-shot request
-        if let completion = pendingLocationCompletion {
+        // Handle pending one-shot request (from oneShotManager)
+        if manager === oneShotManager, let completion = pendingLocationCompletion {
             completion(data)
             pendingLocationCompletion = nil
+            return
         }
 
-        // Save to SQLite immediately (offline-first)
-//        dbWriter?.insert(data, rideId: currentRideId)
+        // Continuous updates from locationManager only
+        guard manager === locationManager else { return }
 
         // Notify JS via Nitro callback
         onLocation?(data)
@@ -105,10 +114,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager,
                          didFailWithError error: Error) {
-        if let completion = pendingLocationCompletion {
+        if manager === oneShotManager, let completion = pendingLocationCompletion {
             completion(nil)
             pendingLocationCompletion = nil
         }
     }
 }
+
 

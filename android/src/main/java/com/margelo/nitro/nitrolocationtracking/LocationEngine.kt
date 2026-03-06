@@ -4,10 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
 import android.os.Looper
+import android.util.Log
 import com.google.android.gms.location.*
 import kotlin.coroutines.resume
 
 class LocationEngine(private val context: Context) {
+  companion object {
+    private const val TAG = "NitroLocationEngine"
+  }
+
   private val fusedClient =
     LocationServices.getFusedLocationProviderClient(context)
   private var locationCallback: LocationCallback? = null
@@ -23,6 +28,10 @@ class LocationEngine(private val context: Context) {
 
   @SuppressLint("MissingPermission")
   fun start(config: LocationConfig) {
+    if (tracking) {
+      locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+    }
+
     val priority = when (config.desiredAccuracy) {
       AccuracyLevel.HIGH -> Priority.PRIORITY_HIGH_ACCURACY
       AccuracyLevel.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
@@ -31,11 +40,16 @@ class LocationEngine(private val context: Context) {
     val request = LocationRequest.Builder(priority, config.intervalMs.toLong())
       .setMinUpdateDistanceMeters(config.distanceFilter.toFloat())
       .setMinUpdateIntervalMillis(config.fastestIntervalMs.toLong())
+      .setWaitForAccurateLocation(false)
       .build()
 
     locationCallback = object : LocationCallback() {
       override fun onLocationResult(result: LocationResult) {
         result.lastLocation?.let { processLocation(it) }
+      }
+
+      override fun onLocationAvailability(availability: LocationAvailability) {
+        Log.d(TAG, "onLocationAvailability — isLocationAvailable=${availability.isLocationAvailable}")
       }
     }
     fusedClient.requestLocationUpdates(
@@ -45,6 +59,7 @@ class LocationEngine(private val context: Context) {
 
   fun stop() {
     locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+    locationCallback = null
     tracking = false
   }
 
@@ -71,7 +86,6 @@ class LocationEngine(private val context: Context) {
 
   private fun processLocation(location: Location) {
     val data = locationToData(location)
-//    dbWriter?.insert(data, currentRideId)
     onLocation?.invoke(data)
 
     val isMoving = location.speed > 0.5f
