@@ -16,6 +16,10 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     var onMotionChange: ((Bool) -> Void)?
     var dbWriter: NativeDBWriter?
     var currentRideId: String?
+    var rejectMockLocations: Bool = false
+    let speedMonitor = SpeedMonitor()
+    let tripCalculator = TripCalculator()
+    var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
 
     override init() {
         super.init()
@@ -67,7 +71,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                     speed: max(lastLocation.speed, 0),
                     bearing: max(lastLocation.course, 0),
                     accuracy: lastLocation.horizontalAccuracy,
-                    timestamp: lastLocation.timestamp.timeIntervalSince1970 * 1000
+                    timestamp: lastLocation.timestamp.timeIntervalSince1970 * 1000,
+                    isMockLocation: Self.isLocationMock(lastLocation)
                 )
                 completion(data)
                 return
@@ -85,6 +90,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                          didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
+        let isMock = Self.isLocationMock(location)
+
         let data = LocationData(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
@@ -92,7 +99,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             speed: max(location.speed, 0),
             bearing: max(location.course, 0),
             accuracy: location.horizontalAccuracy,
-            timestamp: location.timestamp.timeIntervalSince1970 * 1000
+            timestamp: location.timestamp.timeIntervalSince1970 * 1000,
+            isMockLocation: isMock
         )
 
         // Handle pending one-shot request (from oneShotManager)
@@ -105,8 +113,17 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Continuous updates from locationManager only
         guard manager === locationManager else { return }
 
+        // Skip mock locations if rejection is enabled
+        if rejectMockLocations && isMock {
+            return
+        }
+
         // Notify JS via Nitro callback
         onLocation?(data)
+
+        // Feed to speed monitor and trip calculator
+        speedMonitor.feedLocation(data)
+        tripCalculator.feedLocation(data)
 
         // Motion detection
         onMotionChange?(location.speed >= 0.5)
@@ -118,6 +135,43 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             completion(nil)
             pendingLocationCompletion = nil
         }
+    }
+
+    // MARK: - Mock Location Detection
+
+    private static func isLocationMock(_ location: CLLocation) -> Bool {
+        if #available(iOS 15.0, *) {
+            if let sourceInfo = location.sourceInformation {
+                return sourceInfo.isSimulatedBySoftware
+            }
+        }
+        // Fallback: detect simulator at compile time
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    func isFakeGpsEnabled() -> Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    // MARK: - Location Provider Status
+
+    func isLocationServicesEnabled() -> Bool {
+        return CLLocationManager.locationServicesEnabled()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard manager === locationManager else { return }
+        let enabled = CLLocationManager.locationServicesEnabled()
+        let status: LocationProviderStatus = enabled ? .enabled : .disabled
+        providerStatusCallback?(status, status)
     }
 }
 

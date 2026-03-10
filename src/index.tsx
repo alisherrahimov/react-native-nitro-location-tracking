@@ -22,6 +22,16 @@ export type {
   LocationData,
   LocationConfig,
   ConnectionConfig,
+  GeofenceRegion,
+  GeofenceEvent,
+  GeofenceCallback,
+  SpeedConfig,
+  SpeedAlertType,
+  SpeedAlertCallback,
+  TripStats,
+  LocationProviderStatus,
+  ProviderStatusCallback,
+  PermissionStatus,
 } from './NitroLocationTracking.nitro';
 
 export function useDriverLocation(config: LocationConfig) {

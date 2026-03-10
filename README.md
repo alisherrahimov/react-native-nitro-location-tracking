@@ -6,6 +6,11 @@ A high-performance React Native location tracking library built with [Nitro Modu
 
 - **Background location tracking** with foreground service (Android) and background modes (iOS)
 - **WebSocket connection manager** with auto-reconnect and batch sync
+- **Fake GPS detection** — detect mock locations and optionally reject them
+- **Geofencing** — monitor enter/exit events for circular regions
+- **Speed Monitoring** — configurable speed alerts with state-transition callbacks
+- **Distance Calculator** — running trip stats with Haversine distance
+- **Location Provider Status** — detect when GPS/location is turned on/off
 - **Smooth map marker animations** via `LocationSmoother`
 - **Bearing calculation** utilities for rotation/heading
 - **Foreground notifications** (Android foreground service, iOS local notifications)
@@ -30,7 +35,7 @@ yarn add react-native-nitro-location-tracking react-native-nitro-modules
 cd ios && pod install
 ```
 
-2. Add the following keys to your `Info.plist`:
+1. Add the following keys to your `Info.plist`:
 
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
@@ -39,7 +44,7 @@ cd ios && pod install
 <string>We need background location access to continue tracking while the app is minimized.</string>
 ```
 
-3. Enable **Background Modes** in Xcode:
+1. Enable **Background Modes** in Xcode:
    - Go to your target > **Signing & Capabilities** > **+ Capability** > **Background Modes**
    - Check **Location updates**
 
@@ -48,6 +53,7 @@ cd ios && pod install
 The library's `AndroidManifest.xml` automatically merges the required permissions and the foreground service declaration. No manual changes needed.
 
 Permissions included automatically:
+
 - `ACCESS_FINE_LOCATION`
 - `ACCESS_COARSE_LOCATION`
 - `ACCESS_BACKGROUND_LOCATION`
@@ -206,6 +212,37 @@ NitroLocationModule.updateForegroundNotification('En Route', '2.5 km away');
 NitroLocationModule.destroy();
 ```
 
+### Fake GPS Detection
+
+Detect mock/fake GPS locations and optionally reject them:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Check if device-level mock location is enabled
+const fakeGpsOn = NitroLocationModule.isFakeGpsEnabled();
+if (fakeGpsOn) {
+  console.warn('Mock location provider is active!');
+}
+
+// Auto-reject mock locations (they won't fire onLocation callbacks)
+NitroLocationModule.setRejectMockLocations(true);
+
+// Each location update includes isMockLocation flag
+NitroLocationModule.onLocation((location) => {
+  if (location.isMockLocation) {
+    console.warn('This location is from a mock provider');
+  }
+});
+```
+
+**Platform behavior:**
+
+| Platform | Per-location detection | Device-level detection |
+|----------|----------------------|------------------------|
+| Android | `Location.isMock` (API 31+) / `isFromMockProvider` (API 18+) | `AppOpsManager` mock location check |
+| iOS | `CLLocation.sourceInformation.isSimulatedBySoftware` (iOS 15+) | Simulator detection |
+
 ### Smooth Map Marker Animation
 
 Use `LocationSmoother` to animate a map marker smoothly between location updates:
@@ -264,6 +301,147 @@ const targetRotation = 10;
 const smoothed = shortestRotation(currentRotation, targetRotation); // 370 (not -350)
 ```
 
+### Geofencing
+
+Monitor enter/exit events for circular regions:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+import type { GeofenceRegion } from 'react-native-nitro-location-tracking';
+
+// Listen for geofence events
+NitroLocationModule.onGeofenceEvent((event, regionId) => {
+  console.log(`Geofence ${event} for region: ${regionId}`);
+});
+
+// Add a geofence around a pickup point
+NitroLocationModule.addGeofence({
+  id: 'pickup-zone',
+  latitude: 41.311,
+  longitude: 69.279,
+  radius: 100, // meters
+  notifyOnEntry: true,
+  notifyOnExit: true,
+});
+
+// Remove a specific geofence
+NitroLocationModule.removeGeofence('pickup-zone');
+
+// Remove all geofences
+NitroLocationModule.removeAllGeofences();
+```
+
+> **Note:** iOS limits geofence regions to 20 per app. Android supports up to 100.
+
+### Speed Monitoring
+
+Get alerts when speed crosses configurable thresholds:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Configure speed thresholds
+NitroLocationModule.configureSpeedMonitor({
+  maxSpeedKmh: 120,    // alert when exceeding 120 km/h
+  minSpeedKmh: 5,      // alert when below 5 km/h (idle detection)
+  checkIntervalMs: 0,  // check on every location update
+});
+
+// Listen for speed state transitions
+NitroLocationModule.onSpeedAlert((alert, speedKmh) => {
+  if (alert === 'exceeded') {
+    console.warn(`Speed limit exceeded: ${speedKmh.toFixed(1)} km/h`);
+  } else if (alert === 'below_minimum') {
+    console.log('Driver appears idle');
+  } else {
+    console.log('Speed normalized');
+  }
+});
+
+// Get current speed anytime
+const speed = NitroLocationModule.getCurrentSpeed(); // km/h
+```
+
+### Distance Calculator
+
+Track running trip statistics:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Start recording a trip
+NitroLocationModule.startTripCalculation();
+
+// Check stats during the trip
+const stats = NitroLocationModule.getTripStats();
+console.log(`Distance: ${(stats.distanceMeters / 1000).toFixed(2)} km`);
+console.log(`Duration: ${(stats.durationMs / 60000).toFixed(1)} min`);
+console.log(`Avg speed: ${stats.averageSpeedKmh.toFixed(1)} km/h`);
+console.log(`Max speed: ${stats.maxSpeedKmh.toFixed(1)} km/h`);
+console.log(`Points: ${stats.pointCount}`);
+
+// Stop and get final stats
+const finalStats = NitroLocationModule.stopTripCalculation();
+
+// Reset for a new trip
+NitroLocationModule.resetTripCalculation();
+```
+
+### Location Provider Status
+
+Detect when GPS/location services are turned on or off:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Check current status
+const enabled = NitroLocationModule.isLocationServicesEnabled();
+
+// Listen for changes
+NitroLocationModule.onProviderStatusChange((gps, network) => {
+  console.log(`GPS: ${gps}, Network: ${network}`);
+  if (gps === 'disabled') {
+    console.warn('Please enable location services!');
+  }
+});
+```
+
+### Permission Status
+
+Check the current location permission status without prompting the user:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+const status = NitroLocationModule.getLocationPermissionStatus();
+
+switch (status) {
+  case 'always':
+    console.log('Background location granted');
+    break;
+  case 'whenInUse':
+    console.log('Foreground only — background tracking may not work');
+    break;
+  case 'denied':
+    console.warn('Location permission denied');
+    break;
+  case 'restricted':
+    console.warn('Location restricted by parental controls or MDM');
+    break;
+  case 'notDetermined':
+    console.log('Permission not yet requested');
+    break;
+}
+```
+
+| Status | iOS | Android |
+|--------|-----|----------|
+| `notDetermined` | Not yet asked | N/A (returns `denied`) |
+| `denied` | User denied | Fine location not granted |
+| `restricted` | Parental/MDM restriction | N/A (returns `denied`) |
+| `whenInUse` | Authorized when in use | Fine granted, background not |
+| `always` | Authorized always | Fine + background granted |
+
 ## API Reference
 
 ### Types
@@ -275,10 +453,11 @@ interface LocationData {
   latitude: number;
   longitude: number;
   altitude: number;
-  speed: number;      // m/s
-  bearing: number;    // degrees
-  accuracy: number;   // meters
-  timestamp: number;  // unix ms
+  speed: number;             // m/s
+  bearing: number;           // degrees
+  accuracy: number;          // meters
+  timestamp: number;         // unix ms
+  isMockLocation?: boolean;  // true when from a mock provider
 }
 ```
 
@@ -312,6 +491,52 @@ interface ConnectionConfig {
 }
 ```
 
+#### `GeofenceRegion`
+
+```ts
+interface GeofenceRegion {
+  id: string;
+  latitude: number;
+  longitude: number;
+  radius: number;          // meters
+  notifyOnEntry: boolean;
+  notifyOnExit: boolean;
+}
+```
+
+#### `SpeedConfig`
+
+```ts
+interface SpeedConfig {
+  maxSpeedKmh: number;       // speed limit in km/h
+  minSpeedKmh: number;       // minimum speed threshold
+  checkIntervalMs: number;   // how often to evaluate
+}
+```
+
+#### `TripStats`
+
+```ts
+interface TripStats {
+  distanceMeters: number;
+  durationMs: number;
+  averageSpeedKmh: number;
+  maxSpeedKmh: number;
+  pointCount: number;
+}
+```
+
+#### `PermissionStatus`
+
+```ts
+type PermissionStatus =
+  | 'notDetermined'
+  | 'denied'
+  | 'restricted'
+  | 'whenInUse'
+  | 'always';
+```
+
 ### Hooks
 
 | Hook | Returns | Description |
@@ -338,6 +563,22 @@ interface ConnectionConfig {
 | `onConnectionStateChange(callback)` | `void` | Register connection state callback |
 | `onMessage(callback)` | `void` | Register incoming message callback |
 | `forceSync()` | `Promise<boolean>` | Flush queued locations to server |
+| `isFakeGpsEnabled()` | `boolean` | Check if device-level mock location is enabled |
+| `setRejectMockLocations(reject)` | `void` | Auto-reject mock locations when `true` |
+| `addGeofence(region)` | `void` | Start monitoring a circular geofence region |
+| `removeGeofence(regionId)` | `void` | Stop monitoring a specific geofence |
+| `removeAllGeofences()` | `void` | Remove all active geofences |
+| `onGeofenceEvent(callback)` | `void` | Register geofence enter/exit callback |
+| `configureSpeedMonitor(config)` | `void` | Set speed monitoring thresholds |
+| `onSpeedAlert(callback)` | `void` | Register speed state-transition callback |
+| `getCurrentSpeed()` | `number` | Get current speed in km/h |
+| `startTripCalculation()` | `void` | Start recording trip distance/stats |
+| `stopTripCalculation()` | `TripStats` | Stop recording and get final stats |
+| `getTripStats()` | `TripStats` | Get current trip stats without stopping |
+| `resetTripCalculation()` | `void` | Reset trip calculator |
+| `isLocationServicesEnabled()` | `boolean` | Check if GPS/location is enabled on device |
+| `onProviderStatusChange(callback)` | `void` | Register GPS/network provider status callback |
+| `getLocationPermissionStatus()` | `PermissionStatus` | Check current location permission without prompting |
 | `showLocalNotification(title, body)` | `void` | Show a local notification |
 | `updateForegroundNotification(title, body)` | `void` | Update the foreground service notification |
 | `destroy()` | `void` | Stop tracking and disconnect |
@@ -370,13 +611,13 @@ npm login
 yarn prepare
 ```
 
-2. Do a dry run to verify what will be published:
+1. Do a dry run to verify what will be published:
 
 ```sh
 npm pack --dry-run
 ```
 
-3. Publish:
+1. Publish:
 
 ```sh
 npm publish
@@ -393,6 +634,7 @@ yarn release
 ```
 
 This will:
+
 - Bump the version based on your commits
 - Generate a changelog
 - Create a git commit and tag

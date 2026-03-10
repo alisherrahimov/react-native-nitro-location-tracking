@@ -7,11 +7,15 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private let connectionManager = ConnectionManager()
     private let dbWriter = NativeDBWriter()
     private let notificationService = NotificationService()
+    private let geofenceManager = GeofenceManager()
 
     private var locationCallback: ((LocationData) -> Void)?
     private var motionCallback: ((Bool) -> Void)?
     private var connectionStateCallback: ((ConnectionState) -> Void)?
     private var messageCallback: ((String) -> Void)?
+    private var geofenceCallback: ((GeofenceEvent, String) -> Void)?
+    private var speedAlertCallback: ((SpeedAlertType, Double) -> Void)?
+    private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
 
     override init() {
         super.init()
@@ -108,6 +112,105 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         return Promise.resolved(withResult: result)
     }
 
+    // MARK: - Fake GPS Detection
+
+    func isFakeGpsEnabled() throws -> Bool {
+        return locationEngine.isFakeGpsEnabled()
+    }
+
+    func setRejectMockLocations(reject: Bool) throws {
+        locationEngine.rejectMockLocations = reject
+    }
+
+    // MARK: - Geofencing
+
+    func addGeofence(region: GeofenceRegion) throws {
+        geofenceManager.addGeofence(region)
+    }
+
+    func removeGeofence(regionId: String) throws {
+        geofenceManager.removeGeofence(regionId)
+    }
+
+    func removeAllGeofences() throws {
+        geofenceManager.removeAllGeofences()
+    }
+
+    func onGeofenceEvent(callback: @escaping (GeofenceEvent, String) -> Void) throws {
+        geofenceCallback = callback
+        geofenceManager.setCallback(callback)
+    }
+
+    // MARK: - Speed Monitoring
+
+    func configureSpeedMonitor(config: SpeedConfig) throws {
+        locationEngine.speedMonitor.configure(config)
+    }
+
+    func onSpeedAlert(callback: @escaping (SpeedAlertType, Double) -> Void) throws {
+        speedAlertCallback = callback
+        locationEngine.speedMonitor.setCallback(callback)
+    }
+
+    func getCurrentSpeed() throws -> Double {
+        return locationEngine.speedMonitor.getCurrentSpeed()
+    }
+
+    // MARK: - Distance Calculator
+
+    func startTripCalculation() throws {
+        locationEngine.tripCalculator.start()
+    }
+
+    func stopTripCalculation() throws -> TripStats {
+        return locationEngine.tripCalculator.stop()
+    }
+
+    func getTripStats() throws -> TripStats {
+        return locationEngine.tripCalculator.getStats()
+    }
+
+    func resetTripCalculation() throws {
+        locationEngine.tripCalculator.reset()
+    }
+
+    // MARK: - Location Provider Status
+
+    func isLocationServicesEnabled() throws -> Bool {
+        return locationEngine.isLocationServicesEnabled()
+    }
+
+    func onProviderStatusChange(callback: @escaping (LocationProviderStatus, LocationProviderStatus) -> Void) throws {
+        providerStatusCallback = callback
+        locationEngine.providerStatusCallback = callback
+    }
+
+    // MARK: - Permission Status
+
+    func getLocationPermissionStatus() throws -> PermissionStatus {
+        let status: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            status = CLLocationManager().authorizationStatus
+        } else {
+            status = CLLocationManager.authorizationStatus()
+        }
+
+        switch status {
+        case .notDetermined:
+            return .notDetermined
+        case .restricted:
+            return .restricted
+        case .denied:
+            return .denied
+        case .authorizedWhenInUse:
+            return .whenInUse
+        case .authorizedAlways:
+            return .always
+        @unknown default:
+            return .notDetermined
+        }
+    }
+
     // MARK: - Notifications
 
     func showLocalNotification(title: String, body: String) throws {
@@ -123,5 +226,6 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     func destroy() throws {
         locationEngine.stop()
         connectionManager.disconnect()
+        geofenceManager.destroy()
     }
 }

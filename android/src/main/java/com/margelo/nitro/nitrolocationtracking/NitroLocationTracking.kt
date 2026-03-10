@@ -19,11 +19,16 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var connectionManager = ConnectionManager()
     private var dbWriter: NativeDBWriter? = null
     private var notificationService: NotificationService? = null
+    private var geofenceManager: GeofenceManager? = null
+    private var providerStatusMonitor: ProviderStatusMonitor? = null
 
     private var locationCallback: ((LocationData) -> Unit)? = null
     private var motionCallback: ((Boolean) -> Unit)? = null
     private var connectionStateCallback: ((ConnectionState) -> Unit)? = null
     private var messageCallback: ((String) -> Unit)? = null
+    private var geofenceCallback: ((GeofenceEvent, String) -> Unit)? = null
+    private var speedAlertCallback: ((SpeedAlertType, Double) -> Unit)? = null
+    private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
 
@@ -37,6 +42,8 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         locationEngine = LocationEngine(context)
         dbWriter = NativeDBWriter(context)
         notificationService = NotificationService(context)
+        geofenceManager = GeofenceManager(context)
+        providerStatusMonitor = ProviderStatusMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
         Log.d(TAG, "Components initialized successfully")
@@ -158,6 +165,124 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         }
     }
 
+    // === Fake GPS Detection ===
+
+    override fun isFakeGpsEnabled(): Boolean {
+        ensureInitialized()
+        return locationEngine?.isFakeGpsEnabled() ?: false
+    }
+
+    override fun setRejectMockLocations(reject: Boolean) {
+        ensureInitialized()
+        locationEngine?.rejectMockLocations = reject
+    }
+
+    // === Geofencing ===
+
+    override fun addGeofence(region: GeofenceRegion) {
+        ensureInitialized()
+        geofenceManager?.addGeofence(region)
+    }
+
+    override fun removeGeofence(regionId: String) {
+        ensureInitialized()
+        geofenceManager?.removeGeofence(regionId)
+    }
+
+    override fun removeAllGeofences() {
+        ensureInitialized()
+        geofenceManager?.removeAllGeofences()
+    }
+
+    override fun onGeofenceEvent(callback: (event: GeofenceEvent, regionId: String) -> Unit) {
+        geofenceCallback = callback
+        ensureInitialized()
+        geofenceManager?.setCallback(callback)
+    }
+
+    // === Speed Monitoring ===
+
+    override fun configureSpeedMonitor(config: SpeedConfig) {
+        ensureInitialized()
+        locationEngine?.speedMonitor?.configure(config)
+    }
+
+    override fun onSpeedAlert(callback: (alert: SpeedAlertType, currentSpeedKmh: Double) -> Unit) {
+        speedAlertCallback = callback
+        ensureInitialized()
+        locationEngine?.speedMonitor?.setCallback(callback)
+    }
+
+    override fun getCurrentSpeed(): Double {
+        return locationEngine?.speedMonitor?.getCurrentSpeed() ?: 0.0
+    }
+
+    // === Distance Calculator ===
+
+    override fun startTripCalculation() {
+        ensureInitialized()
+        locationEngine?.tripCalculator?.start()
+    }
+
+    override fun stopTripCalculation(): TripStats {
+        return locationEngine?.tripCalculator?.stop() ?: TripStats(
+            distanceMeters = 0.0, durationMs = 0.0, averageSpeedKmh = 0.0,
+            maxSpeedKmh = 0.0, pointCount = 0.0
+        )
+    }
+
+    override fun getTripStats(): TripStats {
+        return locationEngine?.tripCalculator?.getStats() ?: TripStats(
+            distanceMeters = 0.0, durationMs = 0.0, averageSpeedKmh = 0.0,
+            maxSpeedKmh = 0.0, pointCount = 0.0
+        )
+    }
+
+    override fun resetTripCalculation() {
+        locationEngine?.tripCalculator?.reset()
+    }
+
+    // === Location Provider Status ===
+
+    override fun isLocationServicesEnabled(): Boolean {
+        ensureInitialized()
+        return providerStatusMonitor?.isLocationServicesEnabled() ?: false
+    }
+
+    override fun onProviderStatusChange(callback: (gps: LocationProviderStatus, network: LocationProviderStatus) -> Unit) {
+        providerStatusCallback = callback
+        ensureInitialized()
+        providerStatusMonitor?.setCallback(callback)
+    }
+
+    // === Permission Status ===
+
+    override fun getLocationPermissionStatus(): PermissionStatus {
+        val context = NitroModules.applicationContext ?: return PermissionStatus.NOTDETERMINED
+
+        val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!fineGranted) {
+            // Check if we've ever asked — if the app just installed, it's "notDetermined"
+            // Android doesn't have a direct "notDetermined" state, so we treat
+            // not-granted as DENIED (the JS side can use requestPermission to prompt)
+            return PermissionStatus.DENIED
+        }
+
+        // Fine location granted — check background
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val bgGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            return if (bgGranted) PermissionStatus.ALWAYS else PermissionStatus.WHENINUSE
+        }
+
+        // Pre-Android 10: fine location = always (no separate background permission)
+        return PermissionStatus.ALWAYS
+    }
+
     // === Notifications ===
 
     override fun showLocalNotification(title: String, body: String) {
@@ -176,5 +301,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         locationEngine?.stop()
         connectionManager.disconnect()
         notificationService?.stopForegroundService()
+        geofenceManager?.destroy()
+        providerStatusMonitor?.destroy()
     }
 }

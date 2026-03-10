@@ -15,6 +15,7 @@ export interface LocationData {
   bearing: number; // degrees
   accuracy: number; // meters
   timestamp: number; // unix ms
+  isMockLocation?: boolean; // true when from a mock provider
 }
 
 export interface LocationConfig {
@@ -43,6 +44,48 @@ export type LocationCallback = (location: LocationData) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MessageCallback = (message: string) => void;
 
+export interface GeofenceRegion {
+  id: string;
+  latitude: number;
+  longitude: number;
+  radius: number;          // meters
+  notifyOnEntry: boolean;
+  notifyOnExit: boolean;
+}
+
+export type GeofenceEvent = 'enter' | 'exit';
+export type GeofenceCallback = (event: GeofenceEvent, regionId: string) => void;
+
+export interface SpeedConfig {
+  maxSpeedKmh: number;       // speed limit in km/h
+  minSpeedKmh: number;       // minimum speed threshold
+  checkIntervalMs: number;   // how often to evaluate
+}
+
+export type SpeedAlertType = 'exceeded' | 'normalized' | 'below_minimum';
+export type SpeedAlertCallback = (alert: SpeedAlertType, currentSpeedKmh: number) => void;
+
+export interface TripStats {
+  distanceMeters: number;      // total distance traveled
+  durationMs: number;          // elapsed time since start
+  averageSpeedKmh: number;     // average speed
+  maxSpeedKmh: number;         // peak speed recorded
+  pointCount: number;          // number of location samples
+}
+
+export type LocationProviderStatus = 'enabled' | 'disabled';
+export type ProviderStatusCallback = (
+  gps: LocationProviderStatus,
+  network: LocationProviderStatus
+) => void;
+
+export type PermissionStatus =
+  | 'notDetermined'
+  | 'denied'
+  | 'restricted'
+  | 'whenInUse'
+  | 'always';
+
 // ─── Hybrid Object ──────────────────────────────────
 
 export interface NitroLocationTracking
@@ -69,6 +112,34 @@ export interface NitroLocationTracking
 
   // === Sync Control ===
   forceSync(): Promise<boolean>;
+
+  // === Fake GPS Detection ===
+  isFakeGpsEnabled(): boolean;
+  setRejectMockLocations(reject: boolean): void;
+
+  // === Geofencing ===
+  addGeofence(region: GeofenceRegion): void;
+  removeGeofence(regionId: string): void;
+  removeAllGeofences(): void;
+  onGeofenceEvent(callback: GeofenceCallback): void;
+
+  // === Speed Monitoring ===
+  configureSpeedMonitor(config: SpeedConfig): void;
+  onSpeedAlert(callback: SpeedAlertCallback): void;
+  getCurrentSpeed(): number;
+
+  // === Distance Calculator ===
+  startTripCalculation(): void;
+  stopTripCalculation(): TripStats;
+  getTripStats(): TripStats;
+  resetTripCalculation(): void;
+
+  // === Location Provider Status ===
+  isLocationServicesEnabled(): boolean;
+  onProviderStatusChange(callback: ProviderStatusCallback): void;
+
+  // === Permission Status ===
+  getLocationPermissionStatus(): PermissionStatus;
 
   // === Notifications ===
   showLocalNotification(title: string, body: string): void;
