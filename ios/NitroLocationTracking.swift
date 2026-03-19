@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 import NitroModules
 
 class NitroLocationTracking: HybridNitroLocationTrackingSpec {
@@ -197,17 +198,17 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 
         switch status {
         case .notDetermined:
-            return .notDetermined
+          return .notdetermined
         case .restricted:
             return .restricted
         case .denied:
             return .denied
         case .authorizedWhenInUse:
-            return .whenInUse
+            return .wheninuse
         case .authorizedAlways:
             return .always
         @unknown default:
-            return .notDetermined
+            return .notdetermined
         }
     }
 

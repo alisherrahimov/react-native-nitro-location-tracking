@@ -9,7 +9,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import com.google.android.gms.location.*
-import kotlin.coroutines.resume
 
 class LocationEngine(private val context: Context) {
   companion object {
@@ -23,7 +22,7 @@ class LocationEngine(private val context: Context) {
   var onLocation: ((LocationData) -> Unit)? = null
   var onMotionChange: ((Boolean) -> Unit)? = null
   var dbWriter: NativeDBWriter? = null
-  var currentRideId: String? = null
+//  var currentRideId: String? = null
   var rejectMockLocations: Boolean = false
   val speedMonitor = SpeedMonitor()
   val tripCalculator = TripCalculator()
@@ -82,13 +81,13 @@ class LocationEngine(private val context: Context) {
     }
   }
 
-  suspend fun getCurrentLocationSuspend(): LocationData? {
-    return kotlin.coroutines.suspendCoroutine { cont ->
-      getCurrentLocation { data ->
-        cont.resume(data)
-      }
-    }
-  }
+//  suspend fun getCurrentLocationSuspend(): LocationData? {
+//    return kotlin.coroutines.suspendCoroutine { cont ->
+//      getCurrentLocation { data ->
+//        cont.resume(data)
+//      }
+//    }
+//  }
 
   private fun processLocation(location: Location) {
     val data = locationToData(location)

@@ -85,7 +85,8 @@ class NativeDBWriter {
                     speed: sqlite3_column_double(stmt, 4),
                     bearing: sqlite3_column_double(stmt, 5),
                     accuracy: sqlite3_column_double(stmt, 6),
-                    timestamp: Double(sqlite3_column_int64(stmt, 7))
+                    timestamp: Double(sqlite3_column_int64(stmt, 7)),
+                    isMockLocation:true // we need to check here 
                 )
                 results.append((id: id, data: data))
             }

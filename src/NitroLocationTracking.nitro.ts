@@ -48,7 +48,7 @@ export interface GeofenceRegion {
   id: string;
   latitude: number;
   longitude: number;
-  radius: number;          // meters
+  radius: number; // meters
   notifyOnEntry: boolean;
   notifyOnExit: boolean;
 }
@@ -57,20 +57,23 @@ export type GeofenceEvent = 'enter' | 'exit';
 export type GeofenceCallback = (event: GeofenceEvent, regionId: string) => void;
 
 export interface SpeedConfig {
-  maxSpeedKmh: number;       // speed limit in km/h
-  minSpeedKmh: number;       // minimum speed threshold
-  checkIntervalMs: number;   // how often to evaluate
+  maxSpeedKmh: number; // speed limit in km/h
+  minSpeedKmh: number; // minimum speed threshold
+  checkIntervalMs: number; // how often to evaluate
 }
 
 export type SpeedAlertType = 'exceeded' | 'normalized' | 'below_minimum';
-export type SpeedAlertCallback = (alert: SpeedAlertType, currentSpeedKmh: number) => void;
+export type SpeedAlertCallback = (
+  alert: SpeedAlertType,
+  currentSpeedKmh: number
+) => void;
 
 export interface TripStats {
-  distanceMeters: number;      // total distance traveled
-  durationMs: number;          // elapsed time since start
-  averageSpeedKmh: number;     // average speed
-  maxSpeedKmh: number;         // peak speed recorded
-  pointCount: number;          // number of location samples
+  distanceMeters: number; // total distance traveled
+  durationMs: number; // elapsed time since start
+  averageSpeedKmh: number; // average speed
+  maxSpeedKmh: number; // peak speed recorded
+  pointCount: number; // number of location samples
 }
 
 export type LocationProviderStatus = 'enabled' | 'disabled';
