@@ -3,7 +3,6 @@ import CoreLocation
 import NitroModules
 
 class NitroLocationTracking: HybridNitroLocationTrackingSpec {
-
     private let locationEngine = LocationEngine()
     private let connectionManager = ConnectionManager()
     private let dbWriter = NativeDBWriter()
@@ -17,6 +16,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private var geofenceCallback: ((GeofenceEvent, String) -> Void)?
     private var speedAlertCallback: ((SpeedAlertType, Double) -> Void)?
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
+    private var permissionPromise: Promise<PermissionStatus>?
 
     override init() {
         super.init()
@@ -44,6 +44,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         locationEngine.stop()
     }
 
+
     func getCurrentLocation() throws -> Promise<LocationData> {
         let promise = Promise<LocationData>()
         locationEngine.getCurrentLocation { data in
@@ -58,7 +59,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         return promise
     }
 
-    func isTracking() throws -> Bool {
+      func isTracking() throws -> Bool {
         return locationEngine.isTracking
     }
 
@@ -210,6 +211,29 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         @unknown default:
             return .notdetermined
         }
+    }
+
+    func requestLocationPermission() throws -> Promise<PermissionStatus> {
+        let promise = Promise<PermissionStatus>()
+        locationEngine.requestPermission { authStatus in
+            let result: PermissionStatus
+            switch authStatus {
+            case .notDetermined:
+                result = .notdetermined
+            case .restricted:
+                result = .restricted
+            case .denied:
+                result = .denied
+            case .authorizedWhenInUse:
+                result = .wheninuse
+            case .authorizedAlways:
+                result = .always
+            @unknown default:
+                result = .notdetermined
+            }
+            promise.resolve(withResult: result)
+        }
+        return promise
     }
 
     // MARK: - Notifications

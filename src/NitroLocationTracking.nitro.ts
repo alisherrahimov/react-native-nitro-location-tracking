@@ -143,6 +143,7 @@ export interface NitroLocationTracking
 
   // === Permission Status ===
   getLocationPermissionStatus(): PermissionStatus;
+  requestLocationPermission(): Promise<PermissionStatus>;
 
   // === Notifications ===
   showLocalNotification(title: string, body: string): void;

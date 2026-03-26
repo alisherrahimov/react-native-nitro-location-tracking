@@ -11,6 +11,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         return mgr
     }()
     private var tracking = false
+    private var pendingPermissionCompletion: ((CLAuthorizationStatus) -> Void)?
+    private var pendingStartAfterPermission = false
 
     var onLocation: ((LocationData) -> Void)?
     var onMotionChange: ((Bool) -> Void)?
@@ -45,6 +47,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     func start() {
         guard CLLocationManager.authorizationStatus() == .authorizedAlways ||
               CLLocationManager.authorizationStatus() == .authorizedWhenInUse else {
+            pendingStartAfterPermission = true
             locationManager.requestAlwaysAuthorization()
             return
         }
@@ -52,10 +55,21 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         tracking = true
     }
 
+    func requestPermission(completion: @escaping (CLAuthorizationStatus) -> Void) {
+        let currentStatus = CLLocationManager.authorizationStatus()
+        if currentStatus != .notDetermined {
+            completion(currentStatus)
+            return
+        }
+        pendingPermissionCompletion = completion
+        locationManager.requestAlwaysAuthorization()
+    }
+
     func stop() {
         locationManager.stopUpdatingLocation()
         tracking = false
     }
+  
 
     var isTracking: Bool { tracking }
 
@@ -80,11 +94,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
         // Use a SEPARATE manager for one-shot requests so we never
         // stop the continuous startUpdatingLocation() on locationManager.
-        pendingLocationCompletion = completion
+        pendingLocationCompletions.append(completion)
         oneShotManager.requestLocation()
     }
 
-    private var pendingLocationCompletion: ((LocationData?) -> Void)?
+    private var pendingLocationCompletions: [(LocationData?) -> Void] = []
 
     func locationManager(_ manager: CLLocationManager,
                          didUpdateLocations locations: [CLLocation]) {
@@ -104,9 +118,12 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         )
 
         // Handle pending one-shot request (from oneShotManager)
-        if manager === oneShotManager, let completion = pendingLocationCompletion {
-            completion(data)
-            pendingLocationCompletion = nil
+        if manager === oneShotManager {
+            let completions = pendingLocationCompletions
+            pendingLocationCompletions.removeAll()
+            for completion in completions {
+                completion(data)
+            }
             return
         }
 
@@ -131,9 +148,12 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager,
                          didFailWithError error: Error) {
-        if manager === oneShotManager, let completion = pendingLocationCompletion {
-            completion(nil)
-            pendingLocationCompletion = nil
+        if manager === oneShotManager {
+            let completions = pendingLocationCompletions
+            pendingLocationCompletions.removeAll()
+            for completion in completions {
+                completion(nil)
+            }
         }
     }
 
@@ -169,6 +189,24 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard manager === locationManager else { return }
+
+        let authStatus = CLLocationManager.authorizationStatus()
+
+        // Resolve pending permission request
+        if let completion = pendingPermissionCompletion {
+            pendingPermissionCompletion = nil
+            completion(authStatus)
+        }
+
+        // Auto-start tracking if permission was granted after start() was called
+        if pendingStartAfterPermission {
+            pendingStartAfterPermission = false
+            if authStatus == .authorizedAlways || authStatus == .authorizedWhenInUse {
+                locationManager.startUpdatingLocation()
+                tracking = true
+            }
+        }
+
         let enabled = CLLocationManager.locationServicesEnabled()
         let status: LocationProviderStatus = enabled ? .enabled : .disabled
         providerStatusCallback?(status, status)

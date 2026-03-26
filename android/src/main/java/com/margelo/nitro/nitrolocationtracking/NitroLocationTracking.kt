@@ -1,7 +1,11 @@
 package com.margelo.nitro.nitrolocationtracking
 
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.bridge.ReactContext
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
 import kotlin.coroutines.resume
@@ -13,6 +17,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
 
     companion object {
         private const val TAG = "NitroLocationTracking"
+        private const val PERMISSION_REQUEST_CODE = 9001
     }
 
     private var locationEngine: LocationEngine? = null
@@ -31,6 +36,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
+
 
     private fun ensureInitialized(): Boolean {
         if (locationEngine != null) return true
@@ -260,27 +266,84 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     override fun getLocationPermissionStatus(): PermissionStatus {
         val context = NitroModules.applicationContext ?: return PermissionStatus.NOTDETERMINED
 
-        val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+        val fineGranted = ContextCompat.checkSelfPermission(
             context, android.Manifest.permission.ACCESS_FINE_LOCATION
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) == PackageManager.PERMISSION_GRANTED
 
         if (!fineGranted) {
-            // Check if we've ever asked — if the app just installed, it's "notDetermined"
-            // Android doesn't have a direct "notDetermined" state, so we treat
-            // not-granted as DENIED (the JS side can use requestPermission to prompt)
             return PermissionStatus.DENIED
         }
 
         // Fine location granted — check background
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val bgGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            val bgGranted = ContextCompat.checkSelfPermission(
                 context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
             return if (bgGranted) PermissionStatus.ALWAYS else PermissionStatus.WHENINUSE
         }
 
         // Pre-Android 10: fine location = always (no separate background permission)
         return PermissionStatus.ALWAYS
+    }
+
+    override fun requestLocationPermission(): Promise<PermissionStatus> {
+        return Promise.async {
+            suspendCoroutine { cont ->
+                val context = NitroModules.applicationContext
+                if (context == null) {
+                    cont.resume(PermissionStatus.DENIED)
+                    return@suspendCoroutine
+                }
+
+                // Already granted — return current status immediately
+                val fineGranted = ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+
+                if (fineGranted) {
+                    cont.resume(getLocationPermissionStatus())
+                    return@suspendCoroutine
+                }
+
+                // Need to request — get the current Activity
+                val activity = (context as? ReactContext)?.currentActivity
+                if (activity == null) {
+                    Log.e(TAG, "requestLocationPermission — no current Activity available")
+                    cont.resume(PermissionStatus.DENIED)
+                    return@suspendCoroutine
+                }
+
+                // Use PermissionAwareActivity if available (React Native's Activity)
+                if (activity is com.facebook.react.modules.core.PermissionAwareActivity) {
+                    activity.requestPermissions(
+                        arrayOf(
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ),
+                        PERMISSION_REQUEST_CODE
+                    ) { requestCode, _, _ ->
+                        if (requestCode == PERMISSION_REQUEST_CODE) {
+                            cont.resume(getLocationPermissionStatus())
+                        }
+                        true // PermissionListener requires Boolean return
+                    }
+                } else {
+                    // Fallback: use ActivityCompat (result won't be captured directly)
+                    ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ),
+                        PERMISSION_REQUEST_CODE
+                    )
+                    // Poll for result after user interacts with the dialog
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        cont.resume(getLocationPermissionStatus())
+                    }, 5000)
+                }
+            }
+        }
     }
 
     // === Notifications ===
