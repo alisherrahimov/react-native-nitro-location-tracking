@@ -23,6 +23,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     let tripCalculator = TripCalculator()
     var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
 
+    /// The most recently received location from Core Location (for distance calculations)
+    var lastCLLocation: CLLocation? {
+        return locationManager.location
+    }
+
     override init() {
         super.init()
         locationManager.delegate = self

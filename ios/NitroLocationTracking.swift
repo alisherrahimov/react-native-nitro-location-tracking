@@ -236,6 +236,18 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         return promise
     }
 
+    // MARK: - Distance Utilities
+
+    func getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double) throws -> Double {
+        let loc1 = CLLocation(latitude: lat1, longitude: lon1)
+        let loc2 = CLLocation(latitude: lat2, longitude: lon2)
+        return loc1.distance(from: loc2)
+    }
+
+    func getDistanceToGeofence(regionId: String) throws -> Double {
+        return geofenceManager.distanceTo(regionId: regionId, from: locationEngine.lastCLLocation)
+    }
+
     // MARK: - Notifications
 
     func showLocalNotification(title: String, body: String) throws {

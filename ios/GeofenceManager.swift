@@ -62,6 +62,12 @@ class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    func distanceTo(regionId: String, from location: CLLocation?) -> Double {
+        guard let region = activeRegions[regionId], let location = location else { return -1 }
+        let center = CLLocation(latitude: region.latitude, longitude: region.longitude)
+        return location.distance(from: center)
+    }
+
     func destroy() {
         removeAllGeofences()
         callback = nil

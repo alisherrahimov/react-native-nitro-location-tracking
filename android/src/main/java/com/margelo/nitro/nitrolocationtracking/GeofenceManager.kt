@@ -135,6 +135,16 @@ class GeofenceManager(private val context: Context) {
         }
     }
 
+    fun distanceTo(regionId: String, lastLocation: android.location.Location?): Double {
+        val region = activeRegions[regionId] ?: return -1.0
+        val loc = lastLocation ?: return -1.0
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(
+            loc.latitude, loc.longitude, region.latitude, region.longitude, results
+        )
+        return results[0].toDouble()
+    }
+
     fun destroy() {
         removeAllGeofences()
         receiver?.let {

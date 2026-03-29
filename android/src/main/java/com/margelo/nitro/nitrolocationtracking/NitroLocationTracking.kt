@@ -346,6 +346,19 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         }
     }
 
+    // === Distance Utilities ===
+
+    override fun getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(lat1, lon1, lat2, lon2, results)
+        return results[0].toDouble()
+    }
+
+    override fun getDistanceToGeofence(regionId: String): Double {
+        ensureInitialized()
+        return geofenceManager?.distanceTo(regionId, locationEngine?.lastLocation) ?: -1.0
+    }
+
     // === Notifications ===
 
     override fun showLocalNotification(title: String, body: String) {

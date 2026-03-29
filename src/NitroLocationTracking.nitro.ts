@@ -145,6 +145,15 @@ export interface NitroLocationTracking
   getLocationPermissionStatus(): PermissionStatus;
   requestLocationPermission(): Promise<PermissionStatus>;
 
+  // === Distance Utilities ===
+  getDistanceBetween(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number; // meters
+  getDistanceToGeofence(regionId: string): number; // meters from last known location to geofence center, -1 if not found
+
   // === Notifications ===
   showLocalNotification(title: string, body: string): void;
   updateForegroundNotification(title: string, body: string): void;

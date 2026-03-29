@@ -28,6 +28,8 @@ class LocationEngine(private val context: Context) {
   val tripCalculator = TripCalculator()
   private var lastSpeed = 0f
   private var tracking = false
+  var lastLocation: Location? = null
+    private set
 
   val isTracking: Boolean get() = tracking
 
@@ -90,6 +92,7 @@ class LocationEngine(private val context: Context) {
 //  }
 
   private fun processLocation(location: Location) {
+    lastLocation = location
     val data = locationToData(location)
 
     // Skip mock locations if rejection is enabled

@@ -91,7 +91,8 @@ const granted = await requestLocationPermission(
   },
   {
     title: 'Background Location',
-    message: 'Allow background location to keep tracking while the app is minimized.',
+    message:
+      'Allow background location to keep tracking while the app is minimized.',
     buttonPositive: 'Allow',
     buttonNegative: 'Deny',
   }
@@ -109,13 +110,13 @@ import { useDriverLocation } from 'react-native-nitro-location-tracking';
 import type { LocationConfig } from 'react-native-nitro-location-tracking';
 
 const config: LocationConfig = {
-  desiredAccuracy: 'high',           // 'high' | 'balanced' | 'low'
-  distanceFilter: 10,                // meters
-  intervalMs: 3000,                  // Android only
-  fastestIntervalMs: 1000,           // Android only
-  stopTimeout: 5,                    // minutes before declaring stopped
-  stopOnTerminate: false,            // keep tracking after app close (Android)
-  startOnBoot: true,                 // restart tracking after reboot (Android)
+  desiredAccuracy: 'high', // 'high' | 'balanced' | 'low'
+  distanceFilter: 10, // meters
+  intervalMs: 3000, // Android only
+  fastestIntervalMs: 1000, // Android only
+  stopTimeout: 5, // minutes before declaring stopped
+  stopOnTerminate: false, // keep tracking after app close (Android)
+  startOnBoot: true, // restart tracking after reboot (Android)
   foregroundNotificationTitle: 'Tracking Active',
   foregroundNotificationText: 'Your location is being tracked',
 };
@@ -155,8 +156,8 @@ const connectionConfig: ConnectionConfig = {
   authToken: 'your-auth-token',
   reconnectIntervalMs: 5000,
   maxReconnectAttempts: 10,
-  batchSize: 5,           // locations per batch upload
-  syncIntervalMs: 10000,  // flush queue every 10s
+  batchSize: 5, // locations per batch upload
+  syncIntervalMs: 10000, // flush queue every 10s
 };
 
 function RideScreen() {
@@ -238,10 +239,10 @@ NitroLocationModule.onLocation((location) => {
 
 **Platform behavior:**
 
-| Platform | Per-location detection | Device-level detection |
-|----------|----------------------|------------------------|
-| Android | `Location.isMock` (API 31+) / `isFromMockProvider` (API 18+) | `AppOpsManager` mock location check |
-| iOS | `CLLocation.sourceInformation.isSimulatedBySoftware` (iOS 15+) | Simulator detection |
+| Platform | Per-location detection                                         | Device-level detection              |
+| -------- | -------------------------------------------------------------- | ----------------------------------- |
+| Android  | `Location.isMock` (API 31+) / `isFromMockProvider` (API 18+)   | `AppOpsManager` mock location check |
+| iOS      | `CLLocation.sourceInformation.isSimulatedBySoftware` (iOS 15+) | Simulator detection                 |
 
 ### Smooth Map Marker Animation
 
@@ -287,7 +288,10 @@ function MapScreen() {
 Calculate bearing between two coordinates and handle rotation smoothing:
 
 ```tsx
-import { calculateBearing, shortestRotation } from 'react-native-nitro-location-tracking';
+import {
+  calculateBearing,
+  shortestRotation,
+} from 'react-native-nitro-location-tracking';
 
 // Calculate bearing from point A to point B (in degrees, 0-360)
 const bearing = calculateBearing(
@@ -333,6 +337,49 @@ NitroLocationModule.removeAllGeofences();
 
 > **Note:** iOS limits geofence regions to 20 per app. Android supports up to 100.
 
+### Distance Utilities
+
+Calculate distance between two points or from the current location to a registered geofence:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Calculate distance between any two coordinates (returns meters)
+const meters = NitroLocationModule.getDistanceBetween(
+  41.311158,
+  69.279737, // point A
+  41.3152,
+  69.2851 // point B
+);
+console.log(`Distance: ${meters.toFixed(0)}m`);
+
+// Get distance from current location to a registered geofence center
+// First, register a geofence
+NitroLocationModule.addGeofence({
+  id: 'branch-123',
+  latitude: 41.311158,
+  longitude: 69.279737,
+  radius: 150,
+  notifyOnEntry: true,
+  notifyOnExit: true,
+});
+
+// Then query distance using the same region id
+const distToBranch = NitroLocationModule.getDistanceToGeofence('branch-123');
+if (distToBranch >= 0) {
+  console.log(`Distance to branch: ${distToBranch.toFixed(0)}m`);
+} else {
+  console.warn('Geofence not found or no location available');
+}
+```
+
+**Key points:**
+
+- Both methods use **native distance APIs** (`CLLocation.distance(from:)` on iOS, `Location.distanceBetween()` on Android) — no JS-thread computation.
+- `getDistanceBetween()` is a pure utility — pass any two lat/lng pairs.
+- `getDistanceToGeofence()` uses the device's **last known native location** and the registered geofence center. Returns `-1` if the region ID is not found or no location is available.
+- The `regionId` is the `id` string you set when calling `addGeofence()`.
+
 ### Speed Monitoring
 
 Get alerts when speed crosses configurable thresholds:
@@ -342,9 +389,9 @@ import NitroLocationModule from 'react-native-nitro-location-tracking';
 
 // Configure speed thresholds
 NitroLocationModule.configureSpeedMonitor({
-  maxSpeedKmh: 120,    // alert when exceeding 120 km/h
-  minSpeedKmh: 5,      // alert when below 5 km/h (idle detection)
-  checkIntervalMs: 0,  // check on every location update
+  maxSpeedKmh: 120, // alert when exceeding 120 km/h
+  minSpeedKmh: 5, // alert when below 5 km/h (idle detection)
+  checkIntervalMs: 0, // check on every location update
 });
 
 // Listen for speed state transitions
@@ -434,13 +481,55 @@ switch (status) {
 }
 ```
 
-| Status | iOS | Android |
-|--------|-----|----------|
-| `notDetermined` | Not yet asked | N/A (returns `denied`) |
-| `denied` | User denied | Fine location not granted |
-| `restricted` | Parental/MDM restriction | N/A (returns `denied`) |
-| `whenInUse` | Authorized when in use | Fine granted, background not |
-| `always` | Authorized always | Fine + background granted |
+| Status          | iOS                      | Android                      |
+| --------------- | ------------------------ | ---------------------------- |
+| `notDetermined` | Not yet asked            | N/A (returns `denied`)       |
+| `denied`        | User denied              | Fine location not granted    |
+| `restricted`    | Parental/MDM restriction | N/A (returns `denied`)       |
+| `whenInUse`     | Authorized when in use   | Fine granted, background not |
+| `always`        | Authorized always        | Fine + background granted    |
+
+### Request Permission (Native)
+
+Request location permission directly via the native module and get the resulting status:
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+async function setup() {
+  // Check current status first (no dialog)
+  const current = NitroLocationModule.getLocationPermissionStatus();
+
+  if (current === 'always' || current === 'whenInUse') {
+    // Already granted — start tracking
+    NitroLocationModule.startTracking();
+    return;
+  }
+
+  // Request permission — shows the system dialog
+  const status = await NitroLocationModule.requestLocationPermission();
+
+  switch (status) {
+    case 'always':
+    case 'whenInUse':
+      NitroLocationModule.startTracking();
+      break;
+    case 'denied':
+      Alert.alert('Location Required', 'Please enable location in Settings');
+      break;
+    case 'restricted':
+      // Parental controls / MDM — cannot request
+      break;
+  }
+}
+```
+
+**Platform behavior:**
+
+| Platform | Behavior                                                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS      | Calls `requestAlwaysAuthorization()`. If permission is already determined, resolves immediately with current status. If `start()` was called before permission was granted, tracking auto-starts once the user allows. |
+| Android  | Uses React Native's `PermissionAwareActivity` to show the system permission dialog for `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`. Resolves with the resulting status after the user responds.                  |
 
 ## API Reference
 
@@ -453,11 +542,11 @@ interface LocationData {
   latitude: number;
   longitude: number;
   altitude: number;
-  speed: number;             // m/s
-  bearing: number;           // degrees
-  accuracy: number;          // meters
-  timestamp: number;         // unix ms
-  isMockLocation?: boolean;  // true when from a mock provider
+  speed: number; // m/s
+  bearing: number; // degrees
+  accuracy: number; // meters
+  timestamp: number; // unix ms
+  isMockLocation?: boolean; // true when from a mock provider
 }
 ```
 
@@ -466,12 +555,12 @@ interface LocationData {
 ```ts
 interface LocationConfig {
   desiredAccuracy: 'high' | 'balanced' | 'low';
-  distanceFilter: number;                  // meters
-  intervalMs: number;                      // Android only
-  fastestIntervalMs: number;               // Android only
-  stopTimeout: number;                     // minutes before declaring stopped
-  stopOnTerminate: boolean;                // keep tracking after app close (Android)
-  startOnBoot: boolean;                    // restart tracking after reboot (Android)
+  distanceFilter: number; // meters
+  intervalMs: number; // Android only
+  fastestIntervalMs: number; // Android only
+  stopTimeout: number; // minutes before declaring stopped
+  stopOnTerminate: boolean; // keep tracking after app close (Android)
+  startOnBoot: boolean; // restart tracking after reboot (Android)
   foregroundNotificationTitle: string;
   foregroundNotificationText: string;
 }
@@ -486,7 +575,7 @@ interface ConnectionConfig {
   authToken: string;
   reconnectIntervalMs: number;
   maxReconnectAttempts: number;
-  batchSize: number;      // locations per batch upload
+  batchSize: number; // locations per batch upload
   syncIntervalMs: number; // how often to flush queue
 }
 ```
@@ -498,7 +587,7 @@ interface GeofenceRegion {
   id: string;
   latitude: number;
   longitude: number;
-  radius: number;          // meters
+  radius: number; // meters
   notifyOnEntry: boolean;
   notifyOnExit: boolean;
 }
@@ -508,9 +597,9 @@ interface GeofenceRegion {
 
 ```ts
 interface SpeedConfig {
-  maxSpeedKmh: number;       // speed limit in km/h
-  minSpeedKmh: number;       // minimum speed threshold
-  checkIntervalMs: number;   // how often to evaluate
+  maxSpeedKmh: number; // speed limit in km/h
+  minSpeedKmh: number; // minimum speed threshold
+  checkIntervalMs: number; // how often to evaluate
 }
 ```
 
@@ -539,58 +628,61 @@ type PermissionStatus =
 
 ### Hooks
 
-| Hook | Returns | Description |
-|------|---------|-------------|
-| `useDriverLocation(config)` | `{ location, isMoving, isTracking, startTracking, stopTracking }` | Manages location tracking lifecycle |
-| `useRideConnection(config)` | `{ connectionState, lastMessage, connect, disconnect, send }` | Manages WebSocket connection lifecycle |
+| Hook                        | Returns                                                           | Description                            |
+| --------------------------- | ----------------------------------------------------------------- | -------------------------------------- |
+| `useDriverLocation(config)` | `{ location, isMoving, isTracking, startTracking, stopTracking }` | Manages location tracking lifecycle    |
+| `useRideConnection(config)` | `{ connectionState, lastMessage, connect, disconnect, send }`     | Manages WebSocket connection lifecycle |
 
 ### Native Module Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `configure(config)` | `void` | Set location tracking configuration |
-| `startTracking()` | `void` | Start location tracking |
-| `stopTracking()` | `void` | Stop location tracking |
-| `getCurrentLocation()` | `Promise<LocationData>` | Get a one-shot location |
-| `isTracking()` | `boolean` | Check if tracking is active |
-| `onLocation(callback)` | `void` | Register location update callback |
-| `onMotionChange(callback)` | `void` | Register motion state callback |
-| `configureConnection(config)` | `void` | Set WebSocket/REST configuration |
-| `connectWebSocket()` | `void` | Open WebSocket connection |
-| `disconnectWebSocket()` | `void` | Close WebSocket connection |
-| `sendMessage(message)` | `void` | Send a message via WebSocket |
-| `getConnectionState()` | `ConnectionState` | Get current connection state |
-| `onConnectionStateChange(callback)` | `void` | Register connection state callback |
-| `onMessage(callback)` | `void` | Register incoming message callback |
-| `forceSync()` | `Promise<boolean>` | Flush queued locations to server |
-| `isFakeGpsEnabled()` | `boolean` | Check if device-level mock location is enabled |
-| `setRejectMockLocations(reject)` | `void` | Auto-reject mock locations when `true` |
-| `addGeofence(region)` | `void` | Start monitoring a circular geofence region |
-| `removeGeofence(regionId)` | `void` | Stop monitoring a specific geofence |
-| `removeAllGeofences()` | `void` | Remove all active geofences |
-| `onGeofenceEvent(callback)` | `void` | Register geofence enter/exit callback |
-| `configureSpeedMonitor(config)` | `void` | Set speed monitoring thresholds |
-| `onSpeedAlert(callback)` | `void` | Register speed state-transition callback |
-| `getCurrentSpeed()` | `number` | Get current speed in km/h |
-| `startTripCalculation()` | `void` | Start recording trip distance/stats |
-| `stopTripCalculation()` | `TripStats` | Stop recording and get final stats |
-| `getTripStats()` | `TripStats` | Get current trip stats without stopping |
-| `resetTripCalculation()` | `void` | Reset trip calculator |
-| `isLocationServicesEnabled()` | `boolean` | Check if GPS/location is enabled on device |
-| `onProviderStatusChange(callback)` | `void` | Register GPS/network provider status callback |
-| `getLocationPermissionStatus()` | `PermissionStatus` | Check current location permission without prompting |
-| `showLocalNotification(title, body)` | `void` | Show a local notification |
-| `updateForegroundNotification(title, body)` | `void` | Update the foreground service notification |
-| `destroy()` | `void` | Stop tracking and disconnect |
+| Method                                       | Returns                     | Description                                                                              |
+| -------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
+| `configure(config)`                          | `void`                      | Set location tracking configuration                                                      |
+| `startTracking()`                            | `void`                      | Start location tracking                                                                  |
+| `stopTracking()`                             | `void`                      | Stop location tracking                                                                   |
+| `getCurrentLocation()`                       | `Promise<LocationData>`     | Get a one-shot location                                                                  |
+| `isTracking()`                               | `boolean`                   | Check if tracking is active                                                              |
+| `onLocation(callback)`                       | `void`                      | Register location update callback                                                        |
+| `onMotionChange(callback)`                   | `void`                      | Register motion state callback                                                           |
+| `configureConnection(config)`                | `void`                      | Set WebSocket/REST configuration                                                         |
+| `connectWebSocket()`                         | `void`                      | Open WebSocket connection                                                                |
+| `disconnectWebSocket()`                      | `void`                      | Close WebSocket connection                                                               |
+| `sendMessage(message)`                       | `void`                      | Send a message via WebSocket                                                             |
+| `getConnectionState()`                       | `ConnectionState`           | Get current connection state                                                             |
+| `onConnectionStateChange(callback)`          | `void`                      | Register connection state callback                                                       |
+| `onMessage(callback)`                        | `void`                      | Register incoming message callback                                                       |
+| `forceSync()`                                | `Promise<boolean>`          | Flush queued locations to server                                                         |
+| `isFakeGpsEnabled()`                         | `boolean`                   | Check if device-level mock location is enabled                                           |
+| `setRejectMockLocations(reject)`             | `void`                      | Auto-reject mock locations when `true`                                                   |
+| `addGeofence(region)`                        | `void`                      | Start monitoring a circular geofence region                                              |
+| `removeGeofence(regionId)`                   | `void`                      | Stop monitoring a specific geofence                                                      |
+| `removeAllGeofences()`                       | `void`                      | Remove all active geofences                                                              |
+| `onGeofenceEvent(callback)`                  | `void`                      | Register geofence enter/exit callback                                                    |
+| `getDistanceBetween(lat1, lon1, lat2, lon2)` | `number`                    | Calculate distance between two points in meters (native Haversine)                       |
+| `getDistanceToGeofence(regionId)`            | `number`                    | Get distance in meters from last known location to a geofence center (`-1` if not found) |
+| `configureSpeedMonitor(config)`              | `void`                      | Set speed monitoring thresholds                                                          |
+| `onSpeedAlert(callback)`                     | `void`                      | Register speed state-transition callback                                                 |
+| `getCurrentSpeed()`                          | `number`                    | Get current speed in km/h                                                                |
+| `startTripCalculation()`                     | `void`                      | Start recording trip distance/stats                                                      |
+| `stopTripCalculation()`                      | `TripStats`                 | Stop recording and get final stats                                                       |
+| `getTripStats()`                             | `TripStats`                 | Get current trip stats without stopping                                                  |
+| `resetTripCalculation()`                     | `void`                      | Reset trip calculator                                                                    |
+| `isLocationServicesEnabled()`                | `boolean`                   | Check if GPS/location is enabled on device                                               |
+| `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                                            |
+| `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
+| `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
+| `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
+| `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
+| `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |
 
 ### Utility Exports
 
-| Export | Description |
-|--------|-------------|
-| `LocationSmoother` | Class for smooth map marker animation between updates |
-| `calculateBearing(from, to)` | Calculate bearing between two coordinates (degrees, 0-360) |
-| `shortestRotation(from, to)` | Calculate shortest rotation path to avoid spinning |
-| `requestLocationPermission()` | Request location + notification permissions (Android) |
+| Export                        | Description                                                |
+| ----------------------------- | ---------------------------------------------------------- |
+| `LocationSmoother`            | Class for smooth map marker animation between updates      |
+| `calculateBearing(from, to)`  | Calculate bearing between two coordinates (degrees, 0-360) |
+| `shortestRotation(from, to)`  | Calculate shortest rotation path to avoid spinning         |
+| `requestLocationPermission()` | Request location + notification permissions (Android)      |
 
 ## Publishing to npm
 
