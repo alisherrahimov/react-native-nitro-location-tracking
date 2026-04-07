@@ -89,6 +89,8 @@ export type PermissionStatus =
   | 'whenInUse'
   | 'always';
 
+export type PermissionStatusCallback = (status: PermissionStatus) => void;
+
 // ─── Hybrid Object ──────────────────────────────────
 
 export interface NitroLocationTracking
@@ -144,6 +146,7 @@ export interface NitroLocationTracking
   // === Permission Status ===
   getLocationPermissionStatus(): PermissionStatus;
   requestLocationPermission(): Promise<PermissionStatus>;
+  onPermissionStatusChange(callback: PermissionStatusCallback): void;
 
   // === Distance Utilities ===
   getDistanceBetween(

@@ -16,6 +16,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private var geofenceCallback: ((GeofenceEvent, String) -> Void)?
     private var speedAlertCallback: ((SpeedAlertType, Double) -> Void)?
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
+    private var permissionStatusCallback: ((PermissionStatus) -> Void)?
     private var permissionPromise: Promise<PermissionStatus>?
 
     override init() {
@@ -234,6 +235,11 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
             promise.resolve(withResult: result)
         }
         return promise
+    }
+
+    func onPermissionStatusChange(callback: @escaping (PermissionStatus) -> Void) throws {
+        permissionStatusCallback = callback
+        locationEngine.permissionStatusCallback = callback
     }
 
     // MARK: - Distance Utilities

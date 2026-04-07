@@ -26,6 +26,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var notificationService: NotificationService? = null
     private var geofenceManager: GeofenceManager? = null
     private var providerStatusMonitor: ProviderStatusMonitor? = null
+    private var permissionStatusMonitor: PermissionStatusMonitor? = null
 
     private var locationCallback: ((LocationData) -> Unit)? = null
     private var motionCallback: ((Boolean) -> Unit)? = null
@@ -34,6 +35,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var geofenceCallback: ((GeofenceEvent, String) -> Unit)? = null
     private var speedAlertCallback: ((SpeedAlertType, Double) -> Unit)? = null
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Unit)? = null
+    private var permissionStatusCallback: ((PermissionStatus) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
 
@@ -50,6 +52,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         notificationService = NotificationService(context)
         geofenceManager = GeofenceManager(context)
         providerStatusMonitor = ProviderStatusMonitor(context)
+        permissionStatusMonitor = PermissionStatusMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
         Log.d(TAG, "Components initialized successfully")
@@ -286,6 +289,12 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         return PermissionStatus.ALWAYS
     }
 
+    override fun onPermissionStatusChange(callback: (status: PermissionStatus) -> Unit) {
+        permissionStatusCallback = callback
+        ensureInitialized()
+        permissionStatusMonitor?.setCallback(callback)
+    }
+
     override fun requestLocationPermission(): Promise<PermissionStatus> {
         return Promise.async {
             suspendCoroutine { cont ->
@@ -379,5 +388,6 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         notificationService?.stopForegroundService()
         geofenceManager?.destroy()
         providerStatusMonitor?.destroy()
+        permissionStatusMonitor?.destroy()
     }
 }

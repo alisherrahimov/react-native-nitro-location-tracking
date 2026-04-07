@@ -531,6 +531,42 @@ async function setup() {
 | iOS      | Calls `requestAlwaysAuthorization()`. If permission is already determined, resolves immediately with current status. If `start()` was called before permission was granted, tracking auto-starts once the user allows. |
 | Android  | Uses React Native's `PermissionAwareActivity` to show the system permission dialog for `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`. Resolves with the resulting status after the user responds.                  |
 
+### Permission Change Listener
+
+Listen for permission changes in real time. The callback fires whenever the user changes the location permission (via the system dialog, the Settings app, or MDM policy changes):
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+// Register a listener — fires whenever the permission status changes
+NitroLocationModule.onPermissionStatusChange((status) => {
+  console.log('Permission changed to:', status);
+  // status: 'notDetermined' | 'denied' | 'restricted' | 'whenInUse' | 'always'
+
+  switch (status) {
+    case 'always':
+      console.log('Background location granted — full tracking available');
+      break;
+    case 'whenInUse':
+      console.log('Foreground only — background tracking may not work');
+      break;
+    case 'denied':
+      Alert.alert('Location Required', 'Please re-enable location in Settings');
+      break;
+    case 'restricted':
+      console.warn('Location restricted by parental controls or MDM');
+      break;
+  }
+});
+```
+
+**Platform behavior:**
+
+| Platform | Mechanism | When the callback fires |
+| -------- | --------- | ----------------------- |
+| iOS      | `locationManagerDidChangeAuthorization` delegate | Immediately when the user changes permission (system dialog, Settings, MDM) |
+| Android  | `ProcessLifecycleOwner` lifecycle observer | When the app returns to foreground after the user changes permission in Settings |
+
 ## API Reference
 
 ### Types
@@ -671,6 +707,7 @@ type PermissionStatus =
 | `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                                            |
 | `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
 | `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
+| `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
 | `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
 | `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
 | `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |

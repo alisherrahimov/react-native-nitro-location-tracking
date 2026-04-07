@@ -22,6 +22,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     let speedMonitor = SpeedMonitor()
     let tripCalculator = TripCalculator()
     var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
+    var permissionStatusCallback: ((PermissionStatus) -> Void)?
 
     /// The most recently received location from Core Location (for distance calculations)
     var lastCLLocation: CLLocation? {
@@ -211,6 +212,24 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                 tracking = true
             }
         }
+
+        // Notify JS about permission status change
+        let permStatus: PermissionStatus
+        switch authStatus {
+        case .notDetermined:
+            permStatus = .notdetermined
+        case .restricted:
+            permStatus = .restricted
+        case .denied:
+            permStatus = .denied
+        case .authorizedWhenInUse:
+            permStatus = .wheninuse
+        case .authorizedAlways:
+            permStatus = .always
+        @unknown default:
+            permStatus = .notdetermined
+        }
+        permissionStatusCallback?(permStatus)
 
         let enabled = CLLocationManager.locationServicesEnabled()
         let status: LocationProviderStatus = enabled ? .enabled : .disabled
