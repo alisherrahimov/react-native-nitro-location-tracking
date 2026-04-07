@@ -10150,12 +10150,12 @@ __metadata:
     react-native: "npm:0.83.0"
     react-native-builder-bob: "npm:^0.40.18"
     react-native-monorepo-config: "npm:^0.3.3"
-    react-native-nitro-location-tracking: "workspace:*"
+    react-native-nitro-location-tracking: "workspace:^"
     react-native-nitro-modules: "npm:^0.33.9"
   languageName: unknown
   linkType: soft
 
-"react-native-nitro-location-tracking@workspace:*, react-native-nitro-location-tracking@workspace:.":
+"react-native-nitro-location-tracking@workspace:., react-native-nitro-location-tracking@workspace:^":
   version: 0.0.0-use.local
   resolution: "react-native-nitro-location-tracking@workspace:."
   dependencies:

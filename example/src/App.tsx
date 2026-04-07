@@ -1,25 +1,25 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Text,
-  View,
-  StyleSheet,
-  Button,
-  ScrollView,
   Alert,
   AppState,
+  Button,
   Linking,
+  ScrollView,
+  StyleSheet,
   Switch,
+  Text,
+  View,
 } from 'react-native';
+import type {
+  GeofenceEvent,
+  LocationProviderStatus,
+  PermissionStatus,
+  SpeedAlertType,
+  TripStats,
+} from 'react-native-nitro-location-tracking';
 import NitroLocation, {
   useDriverLocation,
   useRideConnection,
-} from 'react-native-nitro-location-tracking';
-import type {
-  GeofenceEvent,
-  SpeedAlertType,
-  TripStats,
-  LocationProviderStatus,
-  PermissionStatus,
 } from 'react-native-nitro-location-tracking';
 import { requestLocationPermission } from '../../src/requestPermission';
 
@@ -94,10 +94,12 @@ export default function App() {
     gps: LocationProviderStatus;
     network: LocationProviderStatus;
   } | null>(null);
+  const [providerLogs, setProviderLogs] = useState<string[]>([]);
 
   // ── Permission Status State ──────────────────────────
   const [permissionStatus, setPermissionStatus] =
     useState<PermissionStatus | null>(null);
+  const [permissionLogs, setPermissionLogs] = useState<string[]>([]);
 
   // ═══ Effects ═══
 
@@ -151,12 +153,38 @@ export default function App() {
 
   // Register provider status listener
   useEffect(() => {
-    NitroLocation.onProviderStatusChange(
-      (gps: LocationProviderStatus, network: LocationProviderStatus) => {
-        console.log(`[Provider] GPS: ${gps}, Network: ${network}`);
-        setProviderStatus({ gps, network });
-      }
-    );
+    try {
+      // Quick sync test — does the module work at all?
+      const enabled = NitroLocation.isLocationServicesEnabled();
+      console.log(enabled);
+      NitroLocation.onProviderStatusChange(
+        (gps: LocationProviderStatus, network: LocationProviderStatus) => {
+          const msg = `[${new Date().toLocaleTimeString()}] GPS: ${gps}, Network: ${network}`;
+          console.warn(`[Provider] ${msg}`);
+          setProviderStatus({ gps, network });
+          setProviderLogs((prev) => [msg, ...prev].slice(0, 20));
+        }
+      );
+    } catch (e) {
+      console.warn(`[DIAG] onProviderStatusChange FAILED: ${e}`);
+    }
+  }, []);
+
+  // Register permission status change listener
+  useEffect(() => {
+    try {
+      const status = NitroLocation.getLocationPermissionStatus();
+      console.log(status);
+
+      NitroLocation.onPermissionStatusChange((status: PermissionStatus) => {
+        const msg = `[${new Date().toLocaleTimeString()}] Permission: ${status}`;
+        console.warn(`[Permission Change] ${msg}`);
+        setPermissionStatus(status);
+        setPermissionLogs((prev) => [msg, ...prev].slice(0, 20));
+      });
+    } catch (e) {
+      console.warn(`[DIAG] onPermissionStatusChange FAILED: ${e}`);
+    }
   }, []);
 
   // ═══ Handlers ═══
@@ -332,6 +360,16 @@ export default function App() {
     const status = NitroLocation.getLocationPermissionStatus();
     setPermissionStatus(status);
     Alert.alert('Permission Status', `Current: ${status}`);
+  }, []);
+
+  const handleRequestPermission = useCallback(async () => {
+    try {
+      const status = await NitroLocation.requestLocationPermission();
+      setPermissionStatus(status);
+      Alert.alert('Permission Result', `Status: ${status}`);
+    } catch (e) {
+      Alert.alert('Error', String(e));
+    }
   }, []);
 
   // ── Lifecycle Handler ────────────────────────────────
@@ -518,13 +556,39 @@ export default function App() {
             </Text>
           </View>
         )}
+        {providerLogs.length > 0 && (
+          <View style={styles.logBox}>
+            <Text style={styles.logTitle}>Provider Change Log:</Text>
+            {providerLogs.map((log, i) => (
+              <Text key={i} style={styles.logLine}>
+                {log}
+              </Text>
+            ))}
+          </View>
+        )}
       </Section>
 
       {/* ── Permission Status ──────────────────────────── */}
       <Section title="🔐 Permission Status">
-        <Button title="Check Permission" onPress={handleCheckPermission} />
+        <View style={styles.row}>
+          <Button title="Check Permission" onPress={handleCheckPermission} />
+          <Button
+            title="Request Permission"
+            onPress={handleRequestPermission}
+          />
+        </View>
         {permissionStatus && (
           <Text style={styles.statusBadge}>Current: {permissionStatus}</Text>
+        )}
+        {permissionLogs.length > 0 && (
+          <View style={styles.logBox}>
+            <Text style={styles.logTitle}>Permission Change Log:</Text>
+            {permissionLogs.map((log, i) => (
+              <Text key={i} style={styles.logLine}>
+                {log}
+              </Text>
+            ))}
+          </View>
         )}
       </Section>
 

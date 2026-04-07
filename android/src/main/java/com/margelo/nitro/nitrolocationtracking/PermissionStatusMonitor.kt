@@ -3,6 +3,8 @@ package com.margelo.nitro.nitrolocationtracking
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -24,6 +26,7 @@ class PermissionStatusMonitor(private val context: Context) {
 
     private var callback: ((PermissionStatus) -> Unit)? = null
     private var lastStatus: PermissionStatus? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
@@ -36,12 +39,14 @@ class PermissionStatusMonitor(private val context: Context) {
         // Capture the current status so we only fire on actual changes
         lastStatus = getCurrentPermissionStatus()
 
-        // Observe the process lifecycle (app foreground / background)
-        try {
-            ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
-            Log.d(TAG, "Registered lifecycle observer for permission changes")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to register lifecycle observer: ${e.message}")
+        // addObserver MUST be called on the main thread
+        mainHandler.post {
+            try {
+                ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+                Log.d(TAG, "Registered lifecycle observer for permission changes")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register lifecycle observer: ${e.message}")
+            }
         }
     }
 
@@ -76,9 +81,11 @@ class PermissionStatusMonitor(private val context: Context) {
     }
 
     fun destroy() {
-        try {
-            ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
-        } catch (_: Exception) {}
+        mainHandler.post {
+            try {
+                ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+            } catch (_: Exception) {}
+        }
         callback = null
         lastStatus = null
     }

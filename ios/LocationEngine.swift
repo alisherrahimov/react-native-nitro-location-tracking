@@ -21,8 +21,31 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     var rejectMockLocations: Bool = false
     let speedMonitor = SpeedMonitor()
     let tripCalculator = TripCalculator()
-    var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
-    var permissionStatusCallback: ((PermissionStatus) -> Void)?
+    var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)? {
+        didSet {
+            // Emit current status immediately when the callback is first set
+            if providerStatusCallback != nil {
+                let enabled = CLLocationManager.locationServicesEnabled()
+                let status: LocationProviderStatus = enabled ? .enabled : .disabled
+                lastProviderEnabled = enabled
+                providerStatusCallback?(status, status)
+            }
+        }
+    }
+    var permissionStatusCallback: ((PermissionStatus) -> Void)? {
+        didSet {
+            // Emit current status immediately when the callback is first set
+            if permissionStatusCallback != nil {
+                let current = Self.mapAuthStatus(CLLocationManager.authorizationStatus())
+                lastPermissionStatus = current
+                permissionStatusCallback?(current)
+            }
+        }
+    }
+
+    // Deduplication: track last-notified values
+    private var lastPermissionStatus: PermissionStatus?
+    private var lastProviderEnabled: Bool?
 
     /// The most recently received location from Core Location (for distance calculations)
     var lastCLLocation: CLLocation? {
@@ -193,6 +216,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         return CLLocationManager.locationServicesEnabled()
     }
 
+    // MARK: - Authorization / Provider change delegate
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard manager === locationManager else { return }
 
@@ -213,27 +238,39 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
 
-        // Notify JS about permission status change
-        let permStatus: PermissionStatus
-        switch authStatus {
-        case .notDetermined:
-            permStatus = .notdetermined
-        case .restricted:
-            permStatus = .restricted
-        case .denied:
-            permStatus = .denied
-        case .authorizedWhenInUse:
-            permStatus = .wheninuse
-        case .authorizedAlways:
-            permStatus = .always
-        @unknown default:
-            permStatus = .notdetermined
+        // Notify JS about permission status change (deduplicated)
+        let permStatus = Self.mapAuthStatus(authStatus)
+        if permStatus != lastPermissionStatus {
+            lastPermissionStatus = permStatus
+            permissionStatusCallback?(permStatus)
         }
-        permissionStatusCallback?(permStatus)
 
+        // Notify JS about provider status change (deduplicated)
         let enabled = CLLocationManager.locationServicesEnabled()
-        let status: LocationProviderStatus = enabled ? .enabled : .disabled
-        providerStatusCallback?(status, status)
+        if enabled != lastProviderEnabled {
+            lastProviderEnabled = enabled
+            let status: LocationProviderStatus = enabled ? .enabled : .disabled
+            providerStatusCallback?(status, status)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private static func mapAuthStatus(_ status: CLAuthorizationStatus) -> PermissionStatus {
+        switch status {
+        case .notDetermined:
+            return .notdetermined
+        case .restricted:
+            return .restricted
+        case .denied:
+            return .denied
+        case .authorizedWhenInUse:
+            return .wheninuse
+        case .authorizedAlways:
+            return .always
+        @unknown default:
+            return .notdetermined
+        }
     }
 }
 
