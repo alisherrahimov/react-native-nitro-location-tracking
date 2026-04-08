@@ -33,6 +33,7 @@ export type {
   ProviderStatusCallback,
   PermissionStatus,
   PermissionStatusCallback,
+  MockLocationCallback,
 } from './NitroLocationTracking.nitro';
 
 export function useDriverLocation(config: LocationConfig) {

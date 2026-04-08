@@ -8,6 +8,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private let dbWriter = NativeDBWriter()
     private let notificationService = NotificationService()
     private let geofenceManager = GeofenceManager()
+    private let mockLocationMonitor = MockLocationMonitor()
 
     private var locationCallback: ((LocationData) -> Void)?
     private var motionCallback: ((Bool) -> Void)?
@@ -17,6 +18,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private var speedAlertCallback: ((SpeedAlertType, Double) -> Void)?
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
     private var permissionStatusCallback: ((PermissionStatus) -> Void)?
+    private var mockLocationCallback: ((Bool) -> Void)?
     private var permissionPromise: Promise<PermissionStatus>?
 
     override init() {
@@ -123,6 +125,11 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 
     func setRejectMockLocations(reject: Bool) throws {
         locationEngine.rejectMockLocations = reject
+    }
+
+    func onMockLocationDetected(callback: @escaping (Bool) -> Void) throws {
+        mockLocationCallback = callback
+        mockLocationMonitor.setCallback(callback)
     }
 
     // MARK: - Geofencing
@@ -270,5 +277,6 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         locationEngine.stop()
         connectionManager.disconnect()
         geofenceManager.destroy()
+        mockLocationMonitor.destroy()
     }
 }

@@ -43,6 +43,7 @@ export interface ConnectionConfig {
 export type LocationCallback = (location: LocationData) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MessageCallback = (message: string) => void;
+export type MockLocationCallback = (isMockEnabled: boolean) => void;
 
 export interface GeofenceRegion {
   id: string;
@@ -121,6 +122,7 @@ export interface NitroLocationTracking
   // === Fake GPS Detection ===
   isFakeGpsEnabled(): boolean;
   setRejectMockLocations(reject: boolean): void;
+  onMockLocationDetected(callback: MockLocationCallback): void;
 
   // === Geofencing ===
   addGeofence(region: GeofenceRegion): void;

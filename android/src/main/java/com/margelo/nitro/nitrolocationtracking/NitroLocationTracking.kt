@@ -27,6 +27,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var geofenceManager: GeofenceManager? = null
     private var providerStatusMonitor: ProviderStatusMonitor? = null
     private var permissionStatusMonitor: PermissionStatusMonitor? = null
+    private var mockLocationMonitor: MockLocationMonitor? = null
 
     private var locationCallback: ((LocationData) -> Unit)? = null
     private var motionCallback: ((Boolean) -> Unit)? = null
@@ -36,6 +37,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var speedAlertCallback: ((SpeedAlertType, Double) -> Unit)? = null
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Unit)? = null
     private var permissionStatusCallback: ((PermissionStatus) -> Unit)? = null
+    private var mockLocationCallback: ((Boolean) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
 
@@ -53,6 +55,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         geofenceManager = GeofenceManager(context)
         providerStatusMonitor = ProviderStatusMonitor(context)
         permissionStatusMonitor = PermissionStatusMonitor(context)
+        mockLocationMonitor = MockLocationMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
         Log.d(TAG, "Components initialized successfully")
@@ -184,6 +187,12 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     override fun setRejectMockLocations(reject: Boolean) {
         ensureInitialized()
         locationEngine?.rejectMockLocations = reject
+    }
+
+    override fun onMockLocationDetected(callback: (isMockEnabled: Boolean) -> Unit) {
+        mockLocationCallback = callback
+        ensureInitialized()
+        mockLocationMonitor?.setCallback(callback)
     }
 
     // === Geofencing ===
@@ -389,5 +398,6 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         geofenceManager?.destroy()
         providerStatusMonitor?.destroy()
         permissionStatusMonitor?.destroy()
+        mockLocationMonitor?.destroy()
     }
 }
