@@ -703,14 +703,17 @@ type PermissionStatus =
 | `stopTripCalculation()`                      | `TripStats`                 | Stop recording and get final stats                                                       |
 | `getTripStats()`                             | `TripStats`                 | Get current trip stats without stopping                                                  |
 | `resetTripCalculation()`                     | `void`                      | Reset trip calculator                                                                    |
-| `isLocationServicesEnabled()`                | `boolean`                   | Check if GPS/location is enabled on device                                               |
-| `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                                            |
-| `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
-| `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
-| `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
-| `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
-| `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
-| `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |
+| `isLocationServicesEnabled()`                | `boolean`                   | Check if GPS/location is enabled on device                               |
+| `openLocationSettings(accuracy, interval)`   | `void`                      | Native app dialog to enable GPS or redirect to system settings           |
+| `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                            |
+| `isAirplaneModeEnabled()`                    | `boolean`                   | Check if Airplane mode is active on Android                              |
+| `onAirplaneModeChange(callback)`             | `void`                      | Register Airplane mode state-transition callback                         |
+| `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                      |
+| `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status              |
+| `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes   |
+| `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                |
+| `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                               |
+| `destroy()`                                  | `void`                      | Stop tracking and disconnect                                             |
 
 ### Utility Exports
 
@@ -720,6 +723,25 @@ type PermissionStatus =
 | `calculateBearing(from, to)`  | Calculate bearing between two coordinates (degrees, 0-360) |
 | `shortestRotation(from, to)`  | Calculate shortest rotation path to avoid spinning         |
 | `requestLocationPermission()` | Request location + notification permissions (Android)      |
+
+### Pure C++ Math Engine
+
+For computationally heavy tasks like array slicing and trip mapping, use the pure C++ Math Engine to bypass the JS thread entirely.
+
+```typescript
+import { NitroLocationCalculations } from 'react-native-nitro-location-tracking';
+
+// Instantly compute heavy math directly in C++
+const stats = NitroLocationCalculations.calculateTotalTripStats(points);
+```
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `calculateTotalTripStats(points)` | `TripMathStats` | Instantly computes exact Haversine distance, time, and max/average speed over an array of thousands of points. |
+| `filterAnomalousPoints(points, maxSpeedMps)` | `LocationPoint[]` | Cleans an array of points by mathematically stripping out teleportation jumps that exceed the given speed limit. |
+| `smoothPath(points, toleranceMeters)` | `LocationPoint[]` | Simplifies a highly dense GPS path into perfect drawing lines using the Ramer-Douglas-Peucker algorithm. |
+| `calculateBearing(lat1, lon1, lat2, lon2)` | `number` | Lightning fast C++ trigonometric bearing computation for raw coordinates. |
+| `encodeGeohash(lat, lon, precision)` | `string` | Converts coordinates into a Geohash string instantly representing geological boundaries. |
 
 ## Publishing to npm
 

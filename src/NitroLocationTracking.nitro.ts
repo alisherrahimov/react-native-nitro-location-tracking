@@ -149,6 +149,11 @@ export interface NitroLocationTracking
   getLocationPermissionStatus(): PermissionStatus;
   requestLocationPermission(): Promise<PermissionStatus>;
   onPermissionStatusChange(callback: PermissionStatusCallback): void;
+  openLocationSettings(accuracy: AccuracyLevel, intervalMs: number): void;
+
+  // === Device State Monitoring ===
+  isAirplaneModeEnabled(): boolean;
+  onAirplaneModeChange(callback: (isEnabled: boolean) => void): void;
 
   // === Distance Utilities ===
   getDistanceBetween(

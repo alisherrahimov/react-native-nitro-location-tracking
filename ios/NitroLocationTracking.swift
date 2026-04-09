@@ -249,6 +249,27 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         locationEngine.permissionStatusCallback = callback
     }
 
+    func openLocationSettings(accuracy: AccuracyLevel, intervalMs: Double) throws {
+        DispatchQueue.main.async {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                if UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                }
+            }
+        }
+    }
+
+    // MARK: - Device State Monitoring
+
+    func isAirplaneModeEnabled() throws -> Bool {
+        // iOS does not provide a public API for Airplane Mode detection
+        return false
+    }
+
+    func onAirplaneModeChange(callback: @escaping (Bool) -> Void) throws {
+        // iOS does not provide public broadcasts for Airplane Mode changes
+    }
+
     // MARK: - Distance Utilities
 
     func getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double) throws -> Double {

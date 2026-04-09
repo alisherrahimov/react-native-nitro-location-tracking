@@ -28,6 +28,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var providerStatusMonitor: ProviderStatusMonitor? = null
     private var permissionStatusMonitor: PermissionStatusMonitor? = null
     private var mockLocationMonitor: MockLocationMonitor? = null
+    private var airplaneModeMonitor: AirplaneModeMonitor? = null
 
     private var locationCallback: ((LocationData) -> Unit)? = null
     private var motionCallback: ((Boolean) -> Unit)? = null
@@ -38,6 +39,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Unit)? = null
     private var permissionStatusCallback: ((PermissionStatus) -> Unit)? = null
     private var mockLocationCallback: ((Boolean) -> Unit)? = null
+    private var airplaneModeCallback: ((Boolean) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
 
@@ -56,6 +58,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         providerStatusMonitor = ProviderStatusMonitor(context)
         permissionStatusMonitor = PermissionStatusMonitor(context)
         mockLocationMonitor = MockLocationMonitor(context)
+        airplaneModeMonitor = AirplaneModeMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
         Log.d(TAG, "Components initialized successfully")
@@ -364,6 +367,67 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         }
     }
 
+    override fun openLocationSettings(accuracy: AccuracyLevel, intervalMs: Double) {
+        val context = NitroModules.applicationContext ?: return
+        val activity = (context as? com.facebook.react.bridge.ReactContext)?.currentActivity
+        
+        if (activity != null) {
+            val priority = when (accuracy) {
+                AccuracyLevel.BALANCED -> com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                AccuracyLevel.LOW -> com.google.android.gms.location.Priority.PRIORITY_LOW_POWER
+                else -> com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
+            }
+            val interval = intervalMs.toLong()
+
+            val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
+                priority, interval
+            ).build()
+            val builder = com.google.android.gms.location.LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest)
+                .setAlwaysShow(true)
+                
+            val client = com.google.android.gms.location.LocationServices.getSettingsClient(context)
+            val task = client.checkLocationSettings(builder.build())
+
+            task.addOnFailureListener { exception ->
+                if (exception is com.google.android.gms.common.api.ResolvableApiException) {
+                    try {
+                        exception.startResolutionForResult(activity, 9002) // arbitrary request code
+                    } catch (e: Exception) {
+                        openLocationSettingsFallback(context)
+                    }
+                } else {
+                    openLocationSettingsFallback(context)
+                }
+            }
+        } else {
+            openLocationSettingsFallback(context)
+        }
+    }
+
+    private fun openLocationSettingsFallback(context: android.content.Context) {
+        val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open location settings: ${e.message}")
+        }
+    }
+
+    // === Device State Monitoring ===
+    
+    override fun isAirplaneModeEnabled(): Boolean {
+        ensureInitialized()
+        return airplaneModeMonitor?.isAirplaneModeEnabled() ?: false
+    }
+
+    override fun onAirplaneModeChange(callback: (isEnabled: Boolean) -> Unit) {
+        airplaneModeCallback = callback
+        ensureInitialized()
+        airplaneModeMonitor?.setCallback(callback)
+    }
+
     // === Distance Utilities ===
 
     override fun getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -399,5 +463,6 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         providerStatusMonitor?.destroy()
         permissionStatusMonitor?.destroy()
         mockLocationMonitor?.destroy()
+        airplaneModeMonitor?.destroy()
     }
 }

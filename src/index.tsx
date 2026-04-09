@@ -12,11 +12,14 @@ const NitroLocationModule =
     'NitroLocationTracking'
   );
 
+export const NitroLocationCalculations = NitroModules.createHybridObject<
+  import('./NitroLocationComplexLogicsCalculation.nitro').NitroLocationComplexLogicsCalculation
+>('NitroLocationComplexLogicsCalculation');
+
 export default NitroLocationModule;
 export { requestLocationPermission } from './requestPermission';
 export { LocationSmoother } from './LocationSmoother';
 export { shortestRotation, calculateBearing } from './bearing';
-// export * from './db'
 export type {
   NitroLocationTracking,
   LocationData,
@@ -35,6 +38,12 @@ export type {
   PermissionStatusCallback,
   MockLocationCallback,
 } from './NitroLocationTracking.nitro';
+
+export type {
+  NitroLocationComplexLogicsCalculation,
+  LocationPoint,
+  TripMathStats,
+} from './NitroLocationComplexLogicsCalculation.nitro';
 
 export function useDriverLocation(config: LocationConfig) {
   const [location, setLocation] = useState<LocationData | null>(null);
