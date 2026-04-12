@@ -149,7 +149,21 @@ export interface NitroLocationTracking
   getLocationPermissionStatus(): PermissionStatus;
   requestLocationPermission(): Promise<PermissionStatus>;
   onPermissionStatusChange(callback: PermissionStatusCallback): void;
-  openLocationSettings(accuracy: AccuracyLevel, intervalMs: number): void;
+  /**
+   * Prompt the user to enable device location (GPS).
+   *
+   * On Android this shows the native Google Play Services in-app resolution
+   * dialog ("For better experience, turn on device location…"). The promise
+   * resolves `true` if GPS is enabled (either because it already was, or
+   * because the user accepted the dialog), and `false` if the user declined
+   * or the dialog could not be shown.
+   *
+   * On iOS there is no in-app dialog for enabling location services, so this
+   * opens the app's Settings page. The promise resolves after the app
+   * returns to foreground: `true` if `locationServicesEnabled()` is now on,
+   * `false` otherwise.
+   */
+  openLocationSettings(): Promise<boolean>;
 
   // === Device State Monitoring ===
   isAirplaneModeEnabled(): boolean;

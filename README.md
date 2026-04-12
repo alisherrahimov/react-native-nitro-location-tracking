@@ -453,6 +453,36 @@ NitroLocationModule.onProviderStatusChange((gps, network) => {
 });
 ```
 
+### Prompt user to enable GPS
+
+Ask the user to turn on device location. On Android this shows the native
+Google Play Services in-app dialog ("For better experience, turn on device
+location…") without leaving the app. On iOS there is no equivalent system
+dialog, so this opens your app's Settings page and resolves after the user
+returns to the app.
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+async function ensureGpsOn() {
+  if (NitroLocationModule.isLocationServicesEnabled()) {
+    return true;
+  }
+  const enabled = await NitroLocationModule.openLocationSettings();
+  if (enabled) {
+    NitroLocationModule.startTracking();
+  } else {
+    // User declined the dialog (Android) or did not enable GPS (iOS)
+  }
+  return enabled;
+}
+```
+
+**Platform behavior:**
+
+- **Android** — Uses `SettingsClient.checkLocationSettings()` + `startResolutionForResult`. Resolves `true` if GPS is already on or if the user accepts the dialog, `false` if the user declines or the dialog cannot be shown.
+- **iOS** — Opens the app's Settings page via `UIApplication.openSettingsURLString` and listens for `UIApplication.didBecomeActiveNotification` to detect the return to foreground. Resolves `true` if `CLLocationManager.locationServicesEnabled()` is on after the user returns, `false` otherwise.
+
 ### Permission Status
 
 Check the current location permission status without prompting the user:
@@ -703,17 +733,17 @@ type PermissionStatus =
 | `stopTripCalculation()`                      | `TripStats`                 | Stop recording and get final stats                                                       |
 | `getTripStats()`                             | `TripStats`                 | Get current trip stats without stopping                                                  |
 | `resetTripCalculation()`                     | `void`                      | Reset trip calculator                                                                    |
-| `isLocationServicesEnabled()`                | `boolean`                   | Check if GPS/location is enabled on device                               |
-| `openLocationSettings(accuracy, interval)`   | `void`                      | Native app dialog to enable GPS or redirect to system settings           |
-| `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                            |
-| `isAirplaneModeEnabled()`                    | `boolean`                   | Check if Airplane mode is active on Android                              |
-| `onAirplaneModeChange(callback)`             | `void`                      | Register Airplane mode state-transition callback                         |
-| `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                      |
-| `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status              |
-| `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes   |
-| `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                |
-| `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                               |
-| `destroy()`                                  | `void`                      | Stop tracking and disconnect                                             |
+| `isLocationServicesEnabled()`                | `boolean`                   | Check if GPS/location is enabled on device                                               |
+| `openLocationSettings()`                     | `Promise<boolean>`          | Prompt user to enable GPS. Resolves `true` if enabled, `false` if not                    |
+| `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                                            |
+| `isAirplaneModeEnabled()`                    | `boolean`                   | Check if Airplane mode is active on Android                                              |
+| `onAirplaneModeChange(callback)`             | `void`                      | Register Airplane mode state-transition callback                                         |
+| `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
+| `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
+| `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
+| `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
+| `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
+| `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |
 
 ### Utility Exports
 

@@ -34,7 +34,7 @@ class LocationEngine(private val context: Context) {
   val isTracking: Boolean get() = tracking
 
   @SuppressLint("MissingPermission")
-  fun start(config: LocationConfig) {
+  fun start(config: LocationConfig): Boolean {
     if (tracking) {
       locationCallback?.let { fusedClient.removeLocationUpdates(it) }
     }
@@ -59,9 +59,25 @@ class LocationEngine(private val context: Context) {
         Log.d(TAG, "onLocationAvailability — isLocationAvailable=${availability.isLocationAvailable}")
       }
     }
-    fusedClient.requestLocationUpdates(
-      request, locationCallback!!, Looper.getMainLooper())
-    tracking = true
+    return try {
+      fusedClient.requestLocationUpdates(
+        request, locationCallback!!, Looper.getMainLooper())
+      tracking = true
+      true
+    } catch (e: SecurityException) {
+      // Permission was revoked between our caller's check and this call, or
+      // the FusedLocationProvider is otherwise refusing access. Fail closed
+      // instead of crashing the process.
+      Log.w(TAG, "requestLocationUpdates refused — permission missing: ${e.message}")
+      locationCallback = null
+      tracking = false
+      false
+    } catch (e: Exception) {
+      Log.e(TAG, "requestLocationUpdates failed: ${e.message}")
+      locationCallback = null
+      tracking = false
+      false
+    }
   }
 
   fun stop() {
@@ -72,13 +88,18 @@ class LocationEngine(private val context: Context) {
 
   @SuppressLint("MissingPermission")
   fun getCurrentLocation(callback: (LocationData?) -> Unit) {
-    fusedClient.lastLocation.addOnSuccessListener { location ->
-      if (location != null) {
-        callback(locationToData(location))
-      } else {
+    try {
+      fusedClient.lastLocation.addOnSuccessListener { location ->
+        if (location != null) {
+          callback(locationToData(location))
+        } else {
+          callback(null)
+        }
+      }.addOnFailureListener {
         callback(null)
       }
-    }.addOnFailureListener {
+    } catch (e: SecurityException) {
+      Log.w(TAG, "getCurrentLocation refused — permission missing: ${e.message}")
       callback(null)
     }
   }

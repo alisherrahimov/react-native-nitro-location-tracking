@@ -238,6 +238,17 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
 
+        // Auto-stop if permission was revoked while tracking. Without this the
+        // engine stays flagged as tracking but Core Location silently delivers
+        // nothing, leaving the app in an inconsistent state.
+        if authStatus == .denied || authStatus == .restricted {
+            if tracking {
+                locationManager.stopUpdatingLocation()
+                tracking = false
+                pendingStartAfterPermission = false
+            }
+        }
+
         // Notify JS about permission status change (deduplicated)
         let permStatus = Self.mapAuthStatus(authStatus)
         if permStatus != lastPermissionStatus {

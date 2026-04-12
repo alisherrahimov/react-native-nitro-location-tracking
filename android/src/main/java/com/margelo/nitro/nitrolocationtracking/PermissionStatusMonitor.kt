@@ -25,7 +25,9 @@ class PermissionStatusMonitor(private val context: Context) {
     }
 
     private var callback: ((PermissionStatus) -> Unit)? = null
+    private var internalCallback: ((PermissionStatus) -> Unit)? = null
     private var lastStatus: PermissionStatus? = null
+    private var observerRegistered = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
@@ -36,8 +38,25 @@ class PermissionStatusMonitor(private val context: Context) {
 
     fun setCallback(callback: (PermissionStatus) -> Unit) {
         this.callback = callback
+        ensureObserverRegistered()
+    }
+
+    /**
+     * Internal callback used by the native module to react to permission loss
+     * (e.g. auto-stop tracking) independently of any JS listener. Registering
+     * this also starts the lifecycle observer, so native cleanup works even
+     * when the user has not called onPermissionStatusChange() from JS.
+     */
+    fun setInternalCallback(callback: (PermissionStatus) -> Unit) {
+        this.internalCallback = callback
+        ensureObserverRegistered()
+    }
+
+    private fun ensureObserverRegistered() {
+        if (observerRegistered) return
         // Capture the current status so we only fire on actual changes
         lastStatus = getCurrentPermissionStatus()
+        observerRegistered = true
 
         // addObserver MUST be called on the main thread
         mainHandler.post {
@@ -46,6 +65,7 @@ class PermissionStatusMonitor(private val context: Context) {
                 Log.d(TAG, "Registered lifecycle observer for permission changes")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to register lifecycle observer: ${e.message}")
+                observerRegistered = false
             }
         }
     }
@@ -55,6 +75,10 @@ class PermissionStatusMonitor(private val context: Context) {
         if (current != lastStatus) {
             Log.d(TAG, "Permission status changed: $lastStatus -> $current")
             lastStatus = current
+            // Native cleanup first, JS notification second — so by the time JS
+            // hears about the denial, the native side has already released
+            // resources (tracking session, foreground service).
+            internalCallback?.invoke(current)
             callback?.invoke(current)
         }
     }
@@ -86,7 +110,9 @@ class PermissionStatusMonitor(private val context: Context) {
                 ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
             } catch (_: Exception) {}
         }
+        observerRegistered = false
         callback = null
+        internalCallback = null
         lastStatus = null
     }
 }

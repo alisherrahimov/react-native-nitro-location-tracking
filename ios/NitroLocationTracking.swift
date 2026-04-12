@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import NitroModules
+import UIKit
 
 class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private let locationEngine = LocationEngine()
@@ -249,14 +250,60 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         locationEngine.permissionStatusCallback = callback
     }
 
-    func openLocationSettings(accuracy: AccuracyLevel, intervalMs: Double) throws {
+    func openLocationSettings() throws -> Promise<Bool> {
+        let promise = Promise<Bool>()
+
+        // Guard against double-resolve — didBecomeActive can fire more than
+        // once while the user bounces between apps, and we also resolve from
+        // the open(url) completion handler on failure.
+        let resolvedLock = NSLock()
+        var hasResolved = false
+        func safeResolve(_ value: Bool) {
+            resolvedLock.lock()
+            defer { resolvedLock.unlock() }
+            if hasResolved { return }
+            hasResolved = true
+            promise.resolve(withResult: value)
+        }
+
         DispatchQueue.main.async {
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                if UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            guard let url = URL(string: UIApplication.openSettingsURLString),
+                  UIApplication.shared.canOpenURL(url) else {
+                safeResolve(CLLocationManager.locationServicesEnabled())
+                return
+            }
+
+            // Register the observer BEFORE opening Settings so we never miss
+            // the return-to-foreground event.
+            var observer: NSObjectProtocol?
+            observer = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                if let obs = observer {
+                    NotificationCenter.default.removeObserver(obs)
+                    observer = nil
+                }
+                // Give iOS a short beat to refresh the location-services flag
+                // after the user toggles it in Settings.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    safeResolve(CLLocationManager.locationServicesEnabled())
+                }
+            }
+
+            UIApplication.shared.open(url, options: [:]) { success in
+                if !success {
+                    if let obs = observer {
+                        NotificationCenter.default.removeObserver(obs)
+                        observer = nil
+                    }
+                    safeResolve(CLLocationManager.locationServicesEnabled())
                 }
             }
         }
+
+        return promise
     }
 
     // MARK: - Device State Monitoring

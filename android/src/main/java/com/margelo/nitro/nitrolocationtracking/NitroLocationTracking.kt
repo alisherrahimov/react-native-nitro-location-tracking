@@ -1,13 +1,17 @@
 package com.margelo.nitro.nitrolocationtracking
 
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.ReactContext
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -18,6 +22,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     companion object {
         private const val TAG = "NitroLocationTracking"
         private const val PERMISSION_REQUEST_CODE = 9001
+        private const val GPS_RESOLUTION_REQUEST_CODE = 9002
     }
 
     private var locationEngine: LocationEngine? = null
@@ -61,6 +66,26 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         airplaneModeMonitor = AirplaneModeMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
+
+        // Always watch for permission revocation so we can proactively tear
+        // down tracking + the foreground service before the OS kills us for
+        // holding a location-type FGS without the matching permission.
+        permissionStatusMonitor?.setInternalCallback { status ->
+            if (status == PermissionStatus.DENIED || status == PermissionStatus.RESTRICTED) {
+                Log.w(TAG, "Location permission revoked — stopping tracking and foreground service")
+                try {
+                    locationEngine?.stop()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error stopping location engine: ${e.message}")
+                }
+                try {
+                    notificationService?.stopForegroundService()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error stopping foreground service: ${e.message}")
+                }
+            }
+        }
+
         Log.d(TAG, "Components initialized successfully")
         return true
     }
@@ -81,6 +106,20 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             Log.e(TAG, "startTracking failed — could not initialize components")
             return
         }
+
+        // Permission guard. Starting a foreground service of type `location`
+        // without holding ACCESS_FINE_LOCATION throws SecurityException on
+        // Android 14+. And even on older versions, requestLocationUpdates
+        // will throw SecurityException. Fail closed and notify JS instead
+        // of crashing the process.
+        val permissionStatus = getLocationPermissionStatus()
+        if (permissionStatus == PermissionStatus.DENIED ||
+            permissionStatus == PermissionStatus.RESTRICTED) {
+            Log.w(TAG, "startTracking aborted — location permission is $permissionStatus")
+            permissionStatusCallback?.invoke(permissionStatus)
+            return
+        }
+
         val engine = locationEngine ?: return
         engine.onLocation = { data ->
             locationCallback?.invoke(data)
@@ -88,7 +127,14 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         engine.onMotionChange = { isMoving ->
             motionCallback?.invoke(isMoving)
         }
-        engine.start(config)
+        val started = engine.start(config)
+        if (!started) {
+            // engine.start() already logged the reason. Don't start the FGS
+            // if tracking itself could not be started — the FGS would just
+            // be killed immediately by the OS.
+            Log.w(TAG, "startTracking aborted — location engine refused to start")
+            return
+        }
 
         try {
             notificationService?.startForegroundService(
@@ -97,6 +143,12 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             )
         } catch (e: SecurityException) {
             Log.w(TAG, "Could not start foreground service — missing runtime permissions: ${e.message}")
+            // Roll back the tracking session so we don't leak a location
+            // request with no owning foreground service.
+            try { engine.stop() } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start foreground service: ${e.message}")
+            try { engine.stop() } catch (_: Exception) {}
         }
     }
 
@@ -367,41 +419,96 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         }
     }
 
-    override fun openLocationSettings(accuracy: AccuracyLevel, intervalMs: Double) {
-        val context = NitroModules.applicationContext ?: return
-        val activity = (context as? com.facebook.react.bridge.ReactContext)?.currentActivity
-        
-        if (activity != null) {
-            val priority = when (accuracy) {
-                AccuracyLevel.BALANCED -> com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY
-                AccuracyLevel.LOW -> com.google.android.gms.location.Priority.PRIORITY_LOW_POWER
-                else -> com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
-            }
-            val interval = intervalMs.toLong()
+    override fun openLocationSettings(): Promise<Boolean> {
+        return Promise.async {
+            suspendCoroutine { cont ->
+                val context = NitroModules.applicationContext
+                if (context == null) {
+                    cont.resume(false)
+                    return@suspendCoroutine
+                }
 
-            val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
-                priority, interval
-            ).build()
-            val builder = com.google.android.gms.location.LocationSettingsRequest.Builder()
-                .addLocationRequest(locationRequest)
-                .setAlwaysShow(true)
-                
-            val client = com.google.android.gms.location.LocationServices.getSettingsClient(context)
-            val task = client.checkLocationSettings(builder.build())
-
-            task.addOnFailureListener { exception ->
-                if (exception is com.google.android.gms.common.api.ResolvableApiException) {
-                    try {
-                        exception.startResolutionForResult(activity, 9002) // arbitrary request code
-                    } catch (e: Exception) {
-                        openLocationSettingsFallback(context)
-                    }
-                } else {
+                val reactContext = context as? ReactContext
+                val activity = reactContext?.currentActivity
+                if (reactContext == null || activity == null) {
+                    Log.w(TAG, "openLocationSettings — no current Activity, using fallback")
                     openLocationSettingsFallback(context)
+                    cont.resume(isLocationServicesEnabled())
+                    return@suspendCoroutine
+                }
+
+                // Use a high-accuracy location request for the settings check.
+                // These values are internal to the SettingsClient call — they do
+                // not affect the tracking configuration.
+                val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                    10_000L
+                ).build()
+
+                val settingsRequest = com.google.android.gms.location.LocationSettingsRequest.Builder()
+                    .addLocationRequest(locationRequest)
+                    .setAlwaysShow(true)
+                    .build()
+
+                val client = com.google.android.gms.location.LocationServices.getSettingsClient(context)
+                val task = client.checkLocationSettings(settingsRequest)
+
+                // Guard against double-resume — the continuation may otherwise
+                // be resumed by both the success listener and the activity
+                // result listener in rare race conditions.
+                val resumed = AtomicBoolean(false)
+                fun safeResume(value: Boolean) {
+                    if (resumed.compareAndSet(false, true)) {
+                        cont.resume(value)
+                    }
+                }
+
+                task.addOnSuccessListener {
+                    // Location settings are already satisfied — GPS is on.
+                    safeResume(true)
+                }
+
+                task.addOnFailureListener { exception ->
+                    if (exception is com.google.android.gms.common.api.ResolvableApiException) {
+                        // Register the activity result listener BEFORE showing
+                        // the dialog so we cannot miss the result.
+                        val listener = object : BaseActivityEventListener() {
+                            override fun onActivityResult(
+                                activity: Activity?,
+                                requestCode: Int,
+                                resultCode: Int,
+                                data: Intent?
+                            ) {
+                                if (requestCode != GPS_RESOLUTION_REQUEST_CODE) return
+                                reactContext.removeActivityEventListener(this)
+                                // RESULT_OK = user tapped "OK" in the dialog and GPS is now on.
+                                // RESULT_CANCELED = user tapped "No thanks" or dismissed.
+                                val enabled = resultCode == Activity.RESULT_OK
+                                safeResume(enabled)
+                            }
+                        }
+                        reactContext.addActivityEventListener(listener)
+
+                        try {
+                            exception.startResolutionForResult(
+                                activity, GPS_RESOLUTION_REQUEST_CODE
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to show resolution dialog: ${e.message}")
+                            reactContext.removeActivityEventListener(listener)
+                            openLocationSettingsFallback(context)
+                            safeResume(isLocationServicesEnabled())
+                        }
+                    } else {
+                        // Not resolvable (e.g. SETTINGS_CHANGE_UNAVAILABLE on an
+                        // airplane-mode-locked device) — fall back to the system
+                        // settings screen.
+                        Log.w(TAG, "Location settings not resolvable: ${exception.message}")
+                        openLocationSettingsFallback(context)
+                        safeResume(isLocationServicesEnabled())
+                    }
                 }
             }
-        } else {
-            openLocationSettingsFallback(context)
         }
     }
 
