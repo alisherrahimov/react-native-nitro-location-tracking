@@ -11,6 +11,9 @@
     "NitroLocationTracking": {
       "swift": "NitroLocationTracking",
       "kotlin": "NitroLocationTracking"
+    },
+    "NitroLocationComplexLogicsCalculation": {
+      "cpp": "HybridNitroLocationComplexLogicsCalculation"
     }
   },
   "ignorePaths": ["node_modules"]
