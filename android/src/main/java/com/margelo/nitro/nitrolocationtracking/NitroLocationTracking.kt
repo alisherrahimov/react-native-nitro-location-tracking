@@ -474,10 +474,10 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
                         // the dialog so we cannot miss the result.
                         val listener = object : BaseActivityEventListener() {
                             override fun onActivityResult(
-                                activity: Activity?,
-                                requestCode: Int,
-                                resultCode: Int,
-                                data: Intent?
+                              activity: Activity,
+                              requestCode: Int,
+                              resultCode: Int,
+                              data: Intent?
                             ) {
                                 if (requestCode != GPS_RESOLUTION_REQUEST_CODE) return
                                 reactContext.removeActivityEventListener(this)
@@ -523,7 +523,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     }
 
     // === Device State Monitoring ===
-    
+
     override fun isAirplaneModeEnabled(): Boolean {
         ensureInitialized()
         return airplaneModeMonitor?.isAirplaneModeEnabled() ?: false
