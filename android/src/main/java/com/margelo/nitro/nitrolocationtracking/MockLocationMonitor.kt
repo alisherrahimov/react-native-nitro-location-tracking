@@ -1,23 +1,26 @@
 package com.margelo.nitro.nitrolocationtracking
 
 import android.annotation.SuppressLint
-import android.app.AppOpsManager
 import android.content.Context
+import android.location.Location
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 /**
- * Periodically polls whether a mock/fake GPS provider is active on the device.
- * This works independently of location tracking — it detects the presence of
- * mock location apps (e.g. Fake GPS, Mock Locations) at the system level.
+ * Periodically checks whether mock/fake GPS is actively being used on the device.
+ * Works independently of location tracking — can be used on login/verify screens.
  *
- * On each poll it checks:
+ * Detection strategy:
  * - Pre-API 23: Settings.Secure.ALLOW_MOCK_LOCATION
- * - API 23+: AppOpsManager OP_MOCK_LOCATION (op code 58)
- * - Also checks all installed packages for mock location permission
+ * - API 23+: Requests a single location via FusedLocationProviderClient and checks
+ *   Location.isMock / isFromMockProvider. This is the only reliable way to know
+ *   if mock location is currently ACTIVE (not just if a mock app is installed).
  *
  * The callback fires only when the state changes (deduplicated).
  */
@@ -25,11 +28,11 @@ class MockLocationMonitor(private val context: Context) {
 
     companion object {
         private const val TAG = "MockLocationMonitor"
-        /** Default poll interval in milliseconds */
         private const val DEFAULT_POLL_INTERVAL_MS = 3000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val fusedClient = LocationServices.getFusedLocationProviderClient(context)
     private var callback: ((Boolean) -> Unit)? = null
     private var lastState: Boolean? = null
     private var polling = false
@@ -38,18 +41,15 @@ class MockLocationMonitor(private val context: Context) {
     private val pollRunnable = object : Runnable {
         override fun run() {
             if (!polling) return
-            checkAndNotify()
+            checkMockLocation()
             mainHandler.postDelayed(this, pollIntervalMs)
         }
     }
 
     fun setCallback(callback: (Boolean) -> Unit) {
         this.callback = callback
-        // Emit current state immediately
-        val current = isMockLocationActive()
-        lastState = current
-        callback.invoke(current)
-        // Start polling
+        // Kick off an immediate check
+        checkMockLocation()
         startPolling()
     }
 
@@ -66,93 +66,66 @@ class MockLocationMonitor(private val context: Context) {
         Log.d(TAG, "Mock location polling stopped")
     }
 
-    private fun checkAndNotify() {
-        val current = isMockLocationActive()
-        if (current != lastState) {
-            lastState = current
-            Log.d(TAG, "Mock location state changed: isMockEnabled=$current")
-            callback?.invoke(current)
+    private fun notifyIfChanged(isMock: Boolean) {
+        if (isMock != lastState) {
+            lastState = isMock
+            Log.d(TAG, "Mock location state changed: isMockEnabled=$isMock")
+            callback?.invoke(isMock)
         }
     }
 
-    /**
-     * Comprehensive check for mock location activity on the device.
-     */
-    @SuppressLint("DiscouragedPrivateApi")
-    fun isMockLocationActive(): Boolean {
-        // Pre-API 23: check the global mock location setting
+    @SuppressLint("MissingPermission")
+    private fun checkMockLocation() {
+        // Pre-API 23: use the global settings flag
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             @Suppress("DEPRECATION")
             val mockSetting = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ALLOW_MOCK_LOCATION
             )
-            return mockSetting == "1"
+            notifyIfChanged(mockSetting == "1")
+            return
         }
 
-        // API 23+: scan ALL installed packages for OP_MOCK_LOCATION permission.
-        // The previous approach only checked our own UID which always returned false
-        // since the mock location app (not ours) holds the permission.
+        // API 23+: request a current location and check isMock flag
         try {
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val opMockLocation = 58 // OP_MOCK_LOCATION
-            val checkOp = AppOpsManager::class.java.getMethod(
-                "checkOp",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                String::class.java
-            )
+            val request = CurrentLocationRequest.Builder()
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setMaxUpdateAgeMillis(5000)
+                .build()
 
-            val pm = context.packageManager
-            @Suppress("DEPRECATION")
-            val packages = pm.getInstalledApplications(0)
-            for (appInfo in packages) {
-                // Skip our own package
-                if (appInfo.packageName == context.packageName) continue
-                try {
-                    val result = checkOp.invoke(
-                        appOps, opMockLocation, appInfo.uid, appInfo.packageName
-                    ) as Int
-                    if (result == AppOpsManager.MODE_ALLOWED) {
-                        Log.d(TAG, "Mock location provider detected: ${appInfo.packageName}")
-                        return true
+            fusedClient.getCurrentLocation(request, null)
+                .addOnSuccessListener { location: Location? ->
+                    if (location != null) {
+                        val isMock = isLocationMock(location)
+                        mainHandler.post { notifyIfChanged(isMock) }
+                    } else {
+                        // No location available — try last location as fallback
+                        fusedClient.lastLocation.addOnSuccessListener { lastLoc: Location? ->
+                            if (lastLoc != null) {
+                                val isMock = isLocationMock(lastLoc)
+                                mainHandler.post { notifyIfChanged(isMock) }
+                            }
+                        }
                     }
-                } catch (_: Exception) {
-                    // Some packages may not be queryable — skip
                 }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not check mock location app ops: ${e.message}")
-        }
-
-        // Fallback: check for known mock location app package names
-        try {
-            val pm = context.packageManager
-            val knownMockApps = listOf(
-                "com.lexa.fakegps",
-                "com.incorporateapps.fakegps.fre",
-                "com.fakegps.mock",
-                "com.lkr.fakegps",
-                "com.fake.gps.go.location.spoofer.free",
-                "com.theappninjas.gpsjoystick",
-                "com.evezzon.fgl",
-                "com.mock.location"
-            )
-            for (pkg in knownMockApps) {
-                try {
-                    @Suppress("DEPRECATION")
-                    pm.getApplicationInfo(pkg, 0)
-                    Log.d(TAG, "Known mock location app detected: $pkg")
-                    return true
-                } catch (_: Exception) {
-                    // Not installed
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to get current location for mock check: ${e.message}")
                 }
-            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No location permission for mock check: ${e.message}")
         } catch (e: Exception) {
-            Log.w(TAG, "Could not check for mock location apps: ${e.message}")
+            Log.w(TAG, "Error checking mock location: ${e.message}")
         }
+    }
 
-        return false
+    private fun isLocationMock(location: Location): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            location.isMock
+        } else {
+            @Suppress("DEPRECATION")
+            location.isFromMockProvider
+        }
     }
 
     fun destroy() {

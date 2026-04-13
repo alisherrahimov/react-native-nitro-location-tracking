@@ -88,6 +88,7 @@ export default function App() {
 
   // ── Fake GPS State ───────────────────────────────────
   const [rejectMock, setRejectMock] = useState(false);
+  const [isMockActive, setIsMockActive] = useState<boolean | null>(null);
 
   // ── Provider Status State ────────────────────────────
   const [providerStatus, setProviderStatus] = useState<{
@@ -102,6 +103,17 @@ export default function App() {
   const [permissionLogs, setPermissionLogs] = useState<string[]>([]);
 
   // ═══ Effects ═══
+
+  // Mock location detection — works without tracking
+  useEffect(() => {
+    NitroLocation.onMockLocationDetected((isMock) => {
+      console.log(
+        '[MockLocation]',
+        isMock ? 'FAKE GPS DETECTED' : 'GPS is real'
+      );
+      setIsMockActive(isMock);
+    });
+  }, []);
 
   // Reconnect WebSocket when app comes to foreground
   useEffect(() => {
@@ -529,6 +541,14 @@ export default function App() {
 
       {/* ── Fake GPS Detection ─────────────────────────── */}
       <Section title="🛡️ Fake GPS Detection">
+        <Text style={styles.mono}>
+          Mock Location Active:{' '}
+          {isMockActive === null
+            ? 'Checking...'
+            : isMockActive
+            ? '⚠️ FAKE GPS DETECTED'
+            : '✅ GPS is real'}
+        </Text>
         <View style={styles.switchRow}>
           <Text>Reject Mock Locations:</Text>
           <Switch value={rejectMock} onValueChange={handleToggleRejectMock} />

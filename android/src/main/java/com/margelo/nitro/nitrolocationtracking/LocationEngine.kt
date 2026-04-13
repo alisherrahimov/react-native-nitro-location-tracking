@@ -21,12 +21,14 @@ class LocationEngine(private val context: Context) {
 
   var onLocation: ((LocationData) -> Unit)? = null
   var onMotionChange: ((Boolean) -> Unit)? = null
+  var onMockLocationChanged: ((Boolean) -> Unit)? = null
   var dbWriter: NativeDBWriter? = null
 //  var currentRideId: String? = null
   var rejectMockLocations: Boolean = false
   val speedMonitor = SpeedMonitor()
   val tripCalculator = TripCalculator()
   private var lastSpeed = 0f
+  private var lastMockState: Boolean? = null
   private var tracking = false
   var lastLocation: Location? = null
     private set
@@ -116,8 +118,16 @@ class LocationEngine(private val context: Context) {
     lastLocation = location
     val data = locationToData(location)
 
+    // Check mock location state change and notify
+    val isMock = data.isMockLocation == true
+    if (isMock != lastMockState) {
+      lastMockState = isMock
+      Log.d(TAG, "Mock location state changed: $isMock")
+      onMockLocationChanged?.invoke(isMock)
+    }
+
     // Skip mock locations if rejection is enabled
-    if (rejectMockLocations && data.isMockLocation == true) {
+    if (rejectMockLocations && isMock) {
       Log.d(TAG, "Rejecting mock location")
       return
     }
