@@ -18,7 +18,7 @@ namespace margelo::nitro::nitrolocationtracking {
   }
 
   TripMathStats HybridNitroLocationComplexLogicsCalculation::calculateTotalTripStats(const std::vector<LocationPoint>& points) {
-      TripMathStats stats = {0.0, 0.0, 0.0, 0.0};
+      TripMathStats stats{0.0, 0.0, 0.0, 0.0};
       
       if (points.size() < 2) return stats;
 
