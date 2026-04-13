@@ -1,6 +1,6 @@
 {
   "name": "react-native-nitro-location-tracking",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "A React Native Nitro module for location tracking",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",

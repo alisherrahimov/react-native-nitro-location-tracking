@@ -90,25 +90,42 @@ class MockLocationMonitor(private val context: Context) {
             return mockSetting == "1"
         }
 
-        // API 23+: check if any app holds MOCK_LOCATION permission via AppOpsManager
+        // API 23+: scan ALL installed packages for OP_MOCK_LOCATION permission.
+        // The previous approach only checked our own UID which always returned false
+        // since the mock location app (not ours) holds the permission.
         try {
             val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
             val opMockLocation = 58 // OP_MOCK_LOCATION
-            val method = AppOpsManager::class.java.getMethod(
+            val checkOp = AppOpsManager::class.java.getMethod(
                 "checkOp",
                 Int::class.javaPrimitiveType,
                 Int::class.javaPrimitiveType,
                 String::class.java
             )
-            val result = method.invoke(
-                appOps, opMockLocation, android.os.Process.myUid(), context.packageName
-            ) as Int
-            if (result == AppOpsManager.MODE_ALLOWED) return true
+
+            val pm = context.packageManager
+            @Suppress("DEPRECATION")
+            val packages = pm.getInstalledApplications(0)
+            for (appInfo in packages) {
+                // Skip our own package
+                if (appInfo.packageName == context.packageName) continue
+                try {
+                    val result = checkOp.invoke(
+                        appOps, opMockLocation, appInfo.uid, appInfo.packageName
+                    ) as Int
+                    if (result == AppOpsManager.MODE_ALLOWED) {
+                        Log.d(TAG, "Mock location provider detected: ${appInfo.packageName}")
+                        return true
+                    }
+                } catch (_: Exception) {
+                    // Some packages may not be queryable — skip
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Could not check mock location app ops: ${e.message}")
         }
 
-        // Additional check: scan installed packages for known mock location apps
+        // Fallback: check for known mock location app package names
         try {
             val pm = context.packageManager
             val knownMockApps = listOf(
@@ -123,6 +140,7 @@ class MockLocationMonitor(private val context: Context) {
             )
             for (pkg in knownMockApps) {
                 try {
+                    @Suppress("DEPRECATION")
                     pm.getApplicationInfo(pkg, 0)
                     Log.d(TAG, "Known mock location app detected: $pkg")
                     return true

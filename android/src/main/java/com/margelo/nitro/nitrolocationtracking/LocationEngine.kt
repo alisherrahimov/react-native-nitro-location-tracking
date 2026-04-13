@@ -164,18 +164,31 @@ class LocationEngine(private val context: Context) {
       return mockSetting == "1"
     }
 
-    // API 23+: check if any app holds MOCK_LOCATION permission via AppOpsManager
+    // API 23+: scan all installed packages for OP_MOCK_LOCATION permission
     try {
       val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-      // Use reflection to access undocumented OP_MOCK_LOCATION (op code 58)
-      val opMockLocation = 58
-      val method = AppOpsManager::class.java.getMethod(
+      val opMockLocation = 58 // OP_MOCK_LOCATION
+      val checkOp = AppOpsManager::class.java.getMethod(
         "checkOp", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, String::class.java
       )
-      val result = method.invoke(
-        appOps, opMockLocation, android.os.Process.myUid(), context.packageName
-      ) as Int
-      return result == AppOpsManager.MODE_ALLOWED
+
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val packages = pm.getInstalledApplications(0)
+      for (appInfo in packages) {
+        if (appInfo.packageName == context.packageName) continue
+        try {
+          val result = checkOp.invoke(
+            appOps, opMockLocation, appInfo.uid, appInfo.packageName
+          ) as Int
+          if (result == AppOpsManager.MODE_ALLOWED) {
+            Log.d(TAG, "Mock location provider detected: ${appInfo.packageName}")
+            return true
+          }
+        } catch (_: Exception) {
+          // Some packages may not be queryable
+        }
+      }
     } catch (e: Exception) {
       Log.w(TAG, "Could not check mock location app ops: ${e.message}")
     }

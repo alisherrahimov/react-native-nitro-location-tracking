@@ -9,6 +9,14 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+  <!-- Required on Android 11+ (API 30) to query all installed packages
+       for mock location detection via AppOpsManager -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+    </intent>
+  </queries>
+
   <application>
     <service
       android:name=".LocationForegroundService"
