@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Platform } from 'react-native';
 import { NitroModules } from 'react-native-nitro-modules';
 import type {
   NitroLocationTracking,
@@ -17,6 +18,21 @@ export const NitroLocationCalculations = NitroModules.createHybridObject<
 >('NitroLocationComplexLogicsCalculation');
 
 export default NitroLocationModule;
+
+// Live Activities are an iOS-only feature (Android calls are safe no-ops).
+// Use this guard before calling startLiveActivity / updateLiveActivity / endLiveActivity.
+export function isLiveActivitySupported(): boolean {
+  return Platform.OS === 'ios';
+}
+
+// Convenience type for the mutable state passed to startLiveActivity / updateLiveActivity.
+export type LiveActivityState = {
+  status: 'picking_up' | 'on_the_way' | 'arriving' | 'delivered';
+  statusText: string;
+  estimatedMinutes: number;
+  distanceMeters: number;
+};
+
 export { requestLocationPermission } from './requestPermission';
 export { LocationSmoother } from './LocationSmoother';
 export { shortestRotation, calculateBearing } from './bearing';

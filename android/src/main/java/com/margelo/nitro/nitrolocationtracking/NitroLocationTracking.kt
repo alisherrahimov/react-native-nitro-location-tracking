@@ -548,6 +548,28 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         return geofenceManager?.distanceTo(regionId, locationEngine?.lastLocation) ?: -1.0
     }
 
+    // === Live Activity (Android no-op — Dynamic Island is iOS-only) ===
+
+    override fun startLiveActivity(
+        orderId: String,
+        customerName: String,
+        deliveryAddress: String,
+        orderCount: Double,
+        status: String,
+        statusText: String,
+        estimatedMinutes: Double,
+        distanceMeters: Double
+    ) { /* no-op */ }
+
+    override fun updateLiveActivity(
+        status: String,
+        statusText: String,
+        estimatedMinutes: Double,
+        distanceMeters: Double
+    ) { /* no-op */ }
+
+    override fun endLiveActivity() { /* no-op */ }
+
     // === Notifications ===
 
     override fun showLocalNotification(title: String, body: String) {

@@ -182,6 +182,25 @@ export interface NitroLocationTracking
   showLocalNotification(title: string, body: string): void;
   updateForegroundNotification(title: string, body: string): void;
 
+  // === Live Activity (iOS Dynamic Island / Lock Screen) ===
+  startLiveActivity(
+    orderId: string,
+    customerName: string,
+    deliveryAddress: string,
+    orderCount: number,
+    status: string,
+    statusText: string,
+    estimatedMinutes: number,
+    distanceMeters: number
+  ): void;
+  updateLiveActivity(
+    status: string,
+    statusText: string,
+    estimatedMinutes: number,
+    distanceMeters: number
+  ): void;
+  endLiveActivity(): void;
+
   // === Lifecycle ===
   destroy(): void;
 }

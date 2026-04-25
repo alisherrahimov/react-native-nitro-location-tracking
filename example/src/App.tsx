@@ -45,6 +45,23 @@ function Section({
   );
 }
 
+// ─── Live Activity constants ──────────────────────────
+const STATUS_SEQUENCE = [
+  'picking_up',
+  'on_the_way',
+  'arriving',
+  'delivered',
+] as const;
+
+type LiveActivityStatus = (typeof STATUS_SEQUENCE)[number];
+
+const STATUS_LABELS: Record<LiveActivityStatus, string> = {
+  picking_up: 'Buyurtmani olish',
+  on_the_way: "Yo'lda",
+  arriving: 'Yetib kelmoqda',
+  delivered: 'Yetkazildi',
+};
+
 // ─── Main App ─────────────────────────────────────────
 export default function App() {
   // ── Location Tracking ────────────────────────────────
@@ -85,6 +102,13 @@ export default function App() {
   // ── Trip Calculator State ────────────────────────────
   const [tripActive, setTripActive] = useState(false);
   const [tripStats, setTripStats] = useState<TripStats | null>(null);
+
+  // ── Live Activity State ──────────────────────────────
+  const [liveActivityActive, setLiveActivityActive] = useState(false);
+  const [liveActivityStatus, setLiveActivityStatus] =
+    useState<LiveActivityStatus>('picking_up');
+  const [liveActivityEta, setLiveActivityEta] = useState(15);
+  const [liveActivityDistance, setLiveActivityDistance] = useState(3200);
 
   // ── Fake GPS State ───────────────────────────────────
   const [rejectMock, setRejectMock] = useState(false);
@@ -384,6 +408,70 @@ export default function App() {
     }
   }, []);
 
+  // ── Live Activity Handlers ───────────────────────────
+
+  const handleStartLiveActivity = useCallback(() => {
+    const initialStatus = 'picking_up';
+    const initialEta = 15;
+    const initialDistance = 3200;
+    try {
+      NitroLocation.startLiveActivity(
+        'ORD-12345',
+        'John Doe',
+        '123 Main Street, Tashkent',
+        3,
+        initialStatus,
+        STATUS_LABELS[initialStatus]!,
+        initialEta,
+        initialDistance
+      );
+      setLiveActivityStatus(initialStatus);
+      setLiveActivityEta(initialEta);
+      setLiveActivityDistance(initialDistance);
+      setLiveActivityActive(true);
+      Alert.alert(
+        'Live Activity',
+        'Started! Check your Dynamic Island or Lock Screen.'
+      );
+    } catch (e) {
+      Alert.alert('Error', String(e));
+    }
+  }, []);
+
+  const handleUpdateLiveActivity = useCallback(() => {
+    const currentIndex = STATUS_SEQUENCE.indexOf(liveActivityStatus);
+    const nextIndex = Math.min(currentIndex + 1, STATUS_SEQUENCE.length - 1);
+    const nextStatus = STATUS_SEQUENCE[nextIndex]!;
+    const nextEta = Math.max(0, liveActivityEta - 3);
+    const nextDistance = Math.max(0, liveActivityDistance - 800);
+    try {
+      NitroLocation.updateLiveActivity(
+        nextStatus,
+        STATUS_LABELS[nextStatus]!,
+        nextEta,
+        nextDistance
+      );
+      setLiveActivityStatus(nextStatus);
+      setLiveActivityEta(nextEta);
+      setLiveActivityDistance(nextDistance);
+    } catch (e) {
+      Alert.alert('Error', String(e));
+    }
+  }, [liveActivityStatus, liveActivityEta, liveActivityDistance]);
+
+  const handleEndLiveActivity = useCallback(() => {
+    try {
+      NitroLocation.endLiveActivity();
+      setLiveActivityActive(false);
+      setLiveActivityStatus('picking_up');
+      setLiveActivityEta(15);
+      setLiveActivityDistance(3200);
+      Alert.alert('Live Activity', 'Ended.');
+    } catch (e) {
+      Alert.alert('Error', String(e));
+    }
+  }, []);
+
   // ── Lifecycle Handler ────────────────────────────────
 
   const handleDestroy = useCallback(() => {
@@ -621,6 +709,49 @@ export default function App() {
             onPress={handleUpdateForegroundNotification}
           />
         </View>
+      </Section>
+
+      {/* ── Live Activity (Dynamic Island) ────────────── */}
+      <Section title="🏝️ Live Activity (Dynamic Island)">
+        <Text>
+          Status:{' '}
+          {liveActivityActive
+            ? `🟢 Active — ${liveActivityStatus}`
+            : '⚪ Inactive'}
+        </Text>
+        {liveActivityActive && (
+          <View style={styles.statsBox}>
+            <Text style={styles.statLabel}>Order: #ORD-12345 · John Doe</Text>
+            <Text style={styles.statLabel}>
+              Status: {STATUS_LABELS[liveActivityStatus]}
+            </Text>
+            <Text style={styles.statLabel}>ETA: {liveActivityEta} min</Text>
+            <Text style={styles.statLabel}>
+              Distance: {(liveActivityDistance / 1000).toFixed(1)} km
+            </Text>
+          </View>
+        )}
+        <View style={styles.row}>
+          <Button
+            title="Start"
+            onPress={handleStartLiveActivity}
+            disabled={liveActivityActive}
+          />
+          <Button
+            title="Next Status"
+            onPress={handleUpdateLiveActivity}
+            disabled={!liveActivityActive || liveActivityStatus === 'delivered'}
+          />
+          <Button
+            title="End"
+            onPress={handleEndLiveActivity}
+            disabled={!liveActivityActive}
+          />
+        </View>
+        <Text style={styles.muted}>
+          Requires iPhone 14 Pro+ for Dynamic Island. Lock Screen banner works
+          on all iOS 16.2+ devices.
+        </Text>
       </Section>
 
       {/* ── Sync & Actions ─────────────────────────────── */}

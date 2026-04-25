@@ -35,6 +35,8 @@
 	</dict>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to show your position and track your route.</string>
 

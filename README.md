@@ -14,6 +14,7 @@ A high-performance React Native location tracking library built with [Nitro Modu
 - **Smooth map marker animations** via `LocationSmoother`
 - **Bearing calculation** utilities for rotation/heading
 - **Foreground notifications** (Android foreground service, iOS local notifications)
+- **Live Activity / Dynamic Island** (iOS 16.2+) — show a delivery card on the Lock Screen and Dynamic Island that updates in real time
 - **Permission helpers** for fine, background, and notification permissions
 - **Built on Nitro Modules** for near-native performance via JSI
 
@@ -597,6 +598,117 @@ NitroLocationModule.onPermissionStatusChange((status) => {
 | iOS      | `locationManagerDidChangeAuthorization` delegate | Immediately when the user changes permission (system dialog, Settings, MDM) |
 | Android  | `ProcessLifecycleOwner` lifecycle observer | When the app returns to foreground after the user changes permission in Settings |
 
+### Live Activity (iOS Dynamic Island & Lock Screen)
+
+Show a live delivery card on the iOS Lock Screen and Dynamic Island that updates in real time as the order progresses. Android calls are safe no-ops.
+
+#### iOS Prerequisites (one-time setup)
+
+1. **Create a Widget Extension** in Xcode:
+   `File → New → Target → Widget Extension` — uncheck "Include Configuration App Intent"
+
+2. **Copy the widget file** from the published package into your widget extension folder:
+
+   ```sh
+   # from your project root
+   cp node_modules/react-native-nitro-location-tracking/ios/widget/CourierWidgetLiveActivity.swift \
+      ios/YourWidgetExtension/CourierWidgetLiveActivity.swift
+   ```
+
+   Then in Xcode, add the copied file to the widget extension target's **Compile Sources**.
+
+3. **Replace** the generated bundle file (`YourWidgetBundle.swift`) with:
+
+   ```swift
+   import WidgetKit
+   import SwiftUI
+
+   @main
+   struct YourWidgetBundle: WidgetBundle {
+       var body: some Widget {
+           CourierWidgetLiveActivity()
+       }
+   }
+   ```
+
+4. **Delete** the other files Xcode generated (`YourWidget.swift`, `YourWidgetControl.swift`, `AppIntent.swift`).
+
+5. **Add to your main app's `Info.plist`**:
+
+   ```xml
+   <key>NSSupportsLiveActivities</key>
+   <true/>
+   ```
+
+6. **Verify embedding**: Main app target → **General** → **Frameworks, Libraries, and Embedded Content** → your `.appex` should be listed as **Embed Without Signing**.
+
+7. On the device, go to **Settings → [Your App] → Live Activities** and make sure it is **ON**.
+
+> Live Activities do not work in the iOS Simulator. Test on a real device running iOS 16.2+.
+> Dynamic Island UI requires iPhone 14 Pro or later.
+
+#### Usage
+
+```tsx
+import NitroLocation, {
+  isLiveActivitySupported,
+} from 'react-native-nitro-location-tracking';
+import type { LiveActivityState } from 'react-native-nitro-location-tracking';
+
+// Guard — only call on iOS
+if (!isLiveActivitySupported()) return;
+
+// Start a Live Activity
+try {
+  NitroLocation.startLiveActivity(
+    'ORD-9981',           // orderId
+    'John Doe',           // customerName
+    '42 Elm Street',      // deliveryAddress
+    2,                    // orderCount
+    'picking_up',         // status
+    'Picking up order',   // statusText (localised label shown on widget)
+    18,                   // estimatedMinutes
+    4500                  // distanceMeters
+  );
+} catch (e) {
+  // Thrown when Live Activities are disabled in Settings
+  Alert.alert('Live Activity', String(e));
+}
+
+// Update as the delivery progresses
+const nextState: LiveActivityState = {
+  status: 'on_the_way',
+  statusText: 'On the way',
+  estimatedMinutes: 12,
+  distanceMeters: 2800,
+};
+NitroLocation.updateLiveActivity(
+  nextState.status,
+  nextState.statusText,
+  nextState.estimatedMinutes,
+  nextState.distanceMeters
+);
+
+// End when delivered
+NitroLocation.endLiveActivity();
+```
+
+**Status values and their meaning:**
+
+| `status`      | Widget emoji | Typical use                    |
+| ------------- | ------------ | ------------------------------ |
+| `picking_up`  | 📦           | Courier heading to restaurant  |
+| `on_the_way`  | 🚗           | En route to customer           |
+| `arriving`    | 🏁           | Less than ~1 min away          |
+| `delivered`   | ✅           | Order handed over              |
+
+**Platform behavior:**
+
+| Platform | Behavior |
+| -------- | -------- |
+| iOS 16.2+ | Shows on Lock Screen; Dynamic Island on iPhone 14 Pro+ |
+| Android   | No-op — calls are safe to make cross-platform |
+
 ## API Reference
 
 ### Types
@@ -741,6 +853,9 @@ type PermissionStatus =
 | `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
 | `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
 | `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
+| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | Start a Live Activity on the Lock Screen / Dynamic Island (iOS 16.2+ only; no-op on Android) |
+| `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | Push a state update to the running Live Activity |
+| `endLiveActivity()`                          | `void`                      | End and dismiss the Live Activity immediately                                            |
 | `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
 | `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
 | `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |
@@ -753,6 +868,8 @@ type PermissionStatus =
 | `calculateBearing(from, to)`  | Calculate bearing between two coordinates (degrees, 0-360) |
 | `shortestRotation(from, to)`  | Calculate shortest rotation path to avoid spinning         |
 | `requestLocationPermission()` | Request location + notification permissions (Android)      |
+| `isLiveActivitySupported()`   | Returns `true` on iOS, `false` on Android                  |
+| `LiveActivityState`           | Type for `{ status, statusText, estimatedMinutes, distanceMeters }` passed to start/update |
 
 ### Pure C++ Math Engine
 

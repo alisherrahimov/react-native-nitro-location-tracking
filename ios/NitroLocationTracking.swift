@@ -329,6 +329,60 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         return geofenceManager.distanceTo(regionId: regionId, from: locationEngine.lastCLLocation)
     }
 
+    // MARK: - Live Activity
+
+    func startLiveActivity(
+        orderId: String,
+        customerName: String,
+        deliveryAddress: String,
+        orderCount: Double,
+        status: String,
+        statusText: String,
+        estimatedMinutes: Double,
+        distanceMeters: Double
+    ) throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            try LiveActivityManager.shared.start(
+                orderId: orderId,
+                customerName: customerName,
+                deliveryAddress: deliveryAddress,
+                orderCount: Int(orderCount),
+                status: status,
+                statusText: statusText,
+                estimatedMinutes: Int(estimatedMinutes),
+                distanceMeters: distanceMeters
+            )
+        }
+#endif
+    }
+
+    func updateLiveActivity(
+        status: String,
+        statusText: String,
+        estimatedMinutes: Double,
+        distanceMeters: Double
+    ) throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            LiveActivityManager.shared.update(
+                status: status,
+                statusText: statusText,
+                estimatedMinutes: Int(estimatedMinutes),
+                distanceMeters: distanceMeters
+            )
+        }
+#endif
+    }
+
+    func endLiveActivity() throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            LiveActivityManager.shared.end()
+        }
+#endif
+    }
+
     // MARK: - Notifications
 
     func showLocalNotification(title: String, body: String) throws {

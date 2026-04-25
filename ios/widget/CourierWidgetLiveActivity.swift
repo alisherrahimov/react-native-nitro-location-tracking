@@ -1,8 +1,50 @@
+// CourierWidgetLiveActivity.swift
+// react-native-nitro-location-tracking
+//
+// ─── HOW TO USE ──────────────────────────────────────────────────────────────
+//
+// 1. In Xcode, add a new Widget Extension target to your app:
+//    File → New → Target → Widget Extension
+//    Uncheck "Include Configuration App Intent"
+//
+// 2. Copy THIS file into the widget extension folder and add it to the
+//    widget extension target's "Compile Sources".
+//
+// 3. Delete the template files Xcode generated
+//    (WidgetName.swift, WidgetNameBundle.swift, Assets.xcassets is fine to keep).
+//
+// 4. Replace WidgetNameBundle.swift content with:
+//
+//    import WidgetKit
+//    import SwiftUI
+//
+//    @main
+//    struct YourWidgetBundle: WidgetBundle {
+//        var body: some Widget {
+//            CourierWidgetLiveActivity()
+//        }
+//    }
+//
+// 5. In your main app's Info.plist, add:
+//    <key>NSSupportsLiveActivities</key>
+//    <true/>
+//
+// 6. In Xcode, select your main app target → General →
+//    Frameworks, Libraries, and Embedded Content → verify the
+//    widget extension .appex is listed with "Embed Without Signing".
+//
+// Minimum deployment target: iOS 16.2
+// ─────────────────────────────────────────────────────────────────────────────
+
 import ActivityKit
 import WidgetKit
 import SwiftUI
 
-// Must mirror LiveActivityManager.swift's CourierActivityAttributes exactly (same fields, same activityType).
+// MARK: - Attributes
+// Must mirror CourierActivityAttributes in LiveActivityManager.swift exactly.
+// The activityType string is what links the library's Activity.request() call
+// to this widget extension across Swift module boundaries.
+
 struct CourierActivityAttributes: ActivityAttributes {
     static var activityType: String { "CourierDeliveryActivity" }
 
@@ -12,8 +54,8 @@ struct CourierActivityAttributes: ActivityAttributes {
     let orderCount: Int
 
     struct ContentState: Codable, Hashable {
-        let status: String
-        let statusText: String
+        let status: String       // "picking_up" | "on_the_way" | "arriving" | "delivered"
+        let statusText: String   // Localised label for the status
         let estimatedMinutes: Int
         let distanceMeters: Double
     }
