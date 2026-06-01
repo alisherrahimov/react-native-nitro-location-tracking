@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.app.AppOpsManager
 import android.content.Context
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
@@ -18,6 +20,13 @@ class LocationEngine(private val context: Context) {
   private val fusedClient =
     LocationServices.getFusedLocationProviderClient(context)
   private var locationCallback: LocationCallback? = null
+
+  // Platform LocationManager fallback. Used when Google Play Services is
+  // missing or unusable (e.g. Honor / Huawei devices without GMS), where the
+  // FusedLocationProviderClient silently never delivers a single update.
+  private val locationManager =
+    context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+  private var platformListener: LocationListener? = null
 
   var onLocation: ((LocationData) -> Unit)? = null
   var onMotionChange: ((Boolean) -> Unit)? = null
@@ -35,12 +44,20 @@ class LocationEngine(private val context: Context) {
 
   val isTracking: Boolean get() = tracking
 
-  @SuppressLint("MissingPermission")
   fun start(config: LocationConfig): Boolean {
     if (tracking) {
-      locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+      removeUpdatesInternal()
     }
+    return if (isGooglePlayServicesAvailable()) {
+      startFused(config)
+    } else {
+      Log.w(TAG, "Google Play Services unavailable — using platform LocationManager fallback")
+      startPlatform(config)
+    }
+  }
 
+  @SuppressLint("MissingPermission")
+  private fun startFused(config: LocationConfig): Boolean {
     val priority = when (config.desiredAccuracy) {
       AccuracyLevel.HIGH -> Priority.PRIORITY_HIGH_ACCURACY
       AccuracyLevel.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
@@ -82,14 +99,96 @@ class LocationEngine(private val context: Context) {
     }
   }
 
-  fun stop() {
+  @SuppressLint("MissingPermission")
+  private fun startPlatform(config: LocationConfig): Boolean {
+    val lm = locationManager ?: run {
+      Log.e(TAG, "LocationManager unavailable — cannot start platform location updates")
+      return false
+    }
+
+    val listener = object : LocationListener {
+      override fun onLocationChanged(location: Location) {
+        processLocation(location)
+      }
+      // onStatusChanged/onProviderEnabled/onProviderDisabled gained default
+      // implementations in API 30 but are abstract on lower compileSdk levels —
+      // override as no-ops so this compiles regardless of compileSdk.
+      @Deprecated("Deprecated in Android API 29")
+      override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+      override fun onProviderEnabled(provider: String) {}
+      override fun onProviderDisabled(provider: String) {}
+    }
+
+    return try {
+      val providers = buildList {
+        if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+        if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+      }
+      if (providers.isEmpty()) {
+        Log.w(TAG, "No platform location providers enabled (GPS and network both off)")
+        return false
+      }
+      for (provider in providers) {
+        lm.requestLocationUpdates(
+          provider,
+          config.intervalMs.toLong(),
+          config.distanceFilter.toFloat(),
+          listener,
+          Looper.getMainLooper()
+        )
+      }
+      platformListener = listener
+      tracking = true
+      Log.d(TAG, "Platform location updates started on: ${providers.joinToString()}")
+      true
+    } catch (e: SecurityException) {
+      Log.w(TAG, "platform requestLocationUpdates refused — permission missing: ${e.message}")
+      platformListener = null
+      tracking = false
+      false
+    } catch (e: Exception) {
+      Log.e(TAG, "platform requestLocationUpdates failed: ${e.message}")
+      platformListener = null
+      tracking = false
+      false
+    }
+  }
+
+  /**
+   * Returns true only when a usable Google Play Services is present. On devices
+   * without GMS (e.g. post-2020 Honor / Huawei) the FusedLocationProviderClient
+   * never throws but also never delivers updates, so we must detect this and
+   * fall back to the platform LocationManager.
+   */
+  private fun isGooglePlayServicesAvailable(): Boolean {
+    return try {
+      com.google.android.gms.common.GoogleApiAvailability.getInstance()
+        .isGooglePlayServicesAvailable(context) ==
+        com.google.android.gms.common.ConnectionResult.SUCCESS
+    } catch (e: Throwable) {
+      Log.w(TAG, "Google Play Services availability check failed: ${e.message}")
+      false
+    }
+  }
+
+  private fun removeUpdatesInternal() {
     locationCallback?.let { fusedClient.removeLocationUpdates(it) }
     locationCallback = null
+    platformListener?.let { locationManager?.removeUpdates(it) }
+    platformListener = null
+  }
+
+  fun stop() {
+    removeUpdatesInternal()
     tracking = false
   }
 
   @SuppressLint("MissingPermission")
   fun getCurrentLocation(callback: (LocationData?) -> Unit) {
+    if (!isGooglePlayServicesAvailable()) {
+      callback(getPlatformLastKnownLocation()?.let { locationToData(it) })
+      return
+    }
     try {
       fusedClient.lastLocation.addOnSuccessListener { location ->
         if (location != null) {
@@ -103,6 +202,21 @@ class LocationEngine(private val context: Context) {
     } catch (e: SecurityException) {
       Log.w(TAG, "getCurrentLocation refused — permission missing: ${e.message}")
       callback(null)
+    }
+  }
+
+  @SuppressLint("MissingPermission")
+  private fun getPlatformLastKnownLocation(): Location? {
+    val lm = locationManager ?: return null
+    return try {
+      listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        .mapNotNull { provider ->
+          if (lm.isProviderEnabled(provider)) lm.getLastKnownLocation(provider) else null
+        }
+        .maxByOrNull { it.time }
+    } catch (e: SecurityException) {
+      Log.w(TAG, "getPlatformLastKnownLocation refused — permission missing: ${e.message}")
+      null
     }
   }
 

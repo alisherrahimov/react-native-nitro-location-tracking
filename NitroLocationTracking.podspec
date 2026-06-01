@@ -18,6 +18,7 @@ Pod::Spec.new do |s|
     "ios/**/*.{m,mm}",
     "cpp/**/*.{hpp,cpp}",
   ]
+  s.exclude_files = "ios/widget/**/*"
 
   s.pod_target_xcconfig = {
   "HEADER_SEARCH_PATHS" => [
