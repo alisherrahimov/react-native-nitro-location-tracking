@@ -23,9 +23,23 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         private const val TAG = "NitroLocationTracking"
         private const val PERMISSION_REQUEST_CODE = 9001
         private const val GPS_RESOLUTION_REQUEST_CODE = 9002
+
+        /**
+         * Process-wide listener invoked for every location fix, on the native
+         * thread, without crossing the JS bridge. App-side native code (e.g. a
+         * REST pusher) registers this once at startup (MainApplication.onCreate)
+         * so fixes keep being delivered while the JS thread is suspended
+         * (screen off / backgrounded / Doze). The active LocationEngine forwards
+         * each fix here; it is wired automatically in ensureInitialized() and so
+         * survives engine re-creation. Set to null to stop receiving fixes.
+         */
+        @Volatile
+        @JvmStatic
+        var nativeLocationListener: ((LocationData) -> Unit)? = null
     }
 
     private var locationEngine: LocationEngine? = null
+    private val livePusher = LivePusher()
     private var connectionManager = ConnectionManager()
     private var dbWriter: NativeDBWriter? = null
     private var notificationService: NotificationService? = null
@@ -66,6 +80,15 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         airplaneModeMonitor = AirplaneModeMonitor(context)
         locationEngine?.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
+
+        // Forward every fix to (1) the built-in live pusher, and (2) the
+        // process-wide native listener if the app registered one. Both run on
+        // the native thread, so they keep firing while JS is suspended.
+        // Wiring lives here so it survives engine re-creation.
+        locationEngine?.onLocationNative = { data ->
+            livePusher.push(data)
+            nativeLocationListener?.invoke(data)
+        }
 
         // Always watch for permission revocation so we can proactively tear
         // down tracking + the foreground service before the OS kills us for
@@ -222,6 +245,20 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
 
     override fun onMessage(callback: (message: String) -> Unit) {
         messageCallback = callback
+    }
+
+    // === Live Push ===
+
+    override fun configureLivePush(config: LivePushConfig) {
+        livePusher.configure(config)
+    }
+
+    override fun setLivePushEnabled(enabled: Boolean) {
+        livePusher.setEnabled(enabled)
+    }
+
+    override fun clearLivePush() {
+        livePusher.clear()
     }
 
     // === Sync Control ===

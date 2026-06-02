@@ -4,7 +4,16 @@ import NitroModules
 import UIKit
 
 class NitroLocationTracking: HybridNitroLocationTrackingSpec {
+    /// Process-wide listener invoked for every location fix, on the native
+    /// thread, without crossing the JS bridge. App-side native code (e.g. a
+    /// REST pusher) registers this once at startup (AppDelegate) so fixes keep
+    /// being delivered while the JS thread is suspended (screen off /
+    /// backgrounded). The engine forwards each fix here; wired in init() so it
+    /// survives instance re-creation. Set to nil to stop receiving fixes.
+    static var nativeLocationListener: ((LocationData) -> Void)?
+
     private let locationEngine = LocationEngine()
+    private let livePusher = LivePusher()
     private let connectionManager = ConnectionManager()
     private let dbWriter = NativeDBWriter()
     private let notificationService = NotificationService()
@@ -26,6 +35,14 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         super.init()
         locationEngine.dbWriter = dbWriter
         connectionManager.dbWriter = dbWriter
+
+        // Forward every fix to (1) the built-in live pusher, and (2) the
+        // process-wide native listener if the app registered one. Both run on
+        // the native side, so they keep firing while JS is suspended.
+        locationEngine.onLocationNative = { [weak self] data in
+            self?.livePusher.push(data)
+            NitroLocationTracking.nativeLocationListener?(data)
+        }
     }
 
     // MARK: - Location Engine
@@ -109,6 +126,20 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 
     func onMessage(callback: @escaping (String) -> Void) throws {
         messageCallback = callback
+    }
+
+    // MARK: - Live Push
+
+    func configureLivePush(config: LivePushConfig) throws {
+        livePusher.configure(config)
+    }
+
+    func setLivePushEnabled(enabled: Bool) throws {
+        livePusher.setEnabled(enabled)
+    }
+
+    func clearLivePush() throws {
+        livePusher.clear()
     }
 
     // MARK: - Sync Control

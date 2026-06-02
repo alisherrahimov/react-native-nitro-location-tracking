@@ -29,6 +29,11 @@ class LocationEngine(private val context: Context) {
   private var platformListener: LocationListener? = null
 
   var onLocation: ((LocationData) -> Unit)? = null
+  // Native-side consumer of every fix, invoked synchronously on the same thread
+  // as onLocation but WITHOUT crossing the JS bridge. Lets app-side native code
+  // (e.g. a REST pusher) keep delivering fixes while the JS thread is suspended
+  // (screen off / backgrounded / Doze). See NitroLocationTracking.nativeLocationListener.
+  var onLocationNative: ((LocationData) -> Unit)? = null
   var onMotionChange: ((Boolean) -> Unit)? = null
   var onMockLocationChanged: ((Boolean) -> Unit)? = null
   var dbWriter: NativeDBWriter? = null
@@ -247,6 +252,8 @@ class LocationEngine(private val context: Context) {
     }
 
     onLocation?.invoke(data)
+    // Native consumer — fires even when the JS thread is suspended.
+    onLocationNative?.invoke(data)
 
     // Feed to speed monitor and trip calculator
     speedMonitor.feedLocation(data)

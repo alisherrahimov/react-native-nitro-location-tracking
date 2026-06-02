@@ -41,6 +41,7 @@ export type {
   LocationData,
   LocationConfig,
   ConnectionConfig,
+  LivePushConfig,
   GeofenceRegion,
   GeofenceEvent,
   GeofenceCallback,

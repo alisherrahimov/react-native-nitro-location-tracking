@@ -6,6 +6,7 @@ A high-performance React Native location tracking library built with [Nitro Modu
 
 - **Background location tracking** with foreground service (Android) and background modes (iOS)
 - **WebSocket connection manager** with auto-reconnect and batch sync
+- **Native live push** — per-fix HTTP POST sent from the native thread, so the server keeps receiving the courier's position even while the screen is off, the app is backgrounded, or the device is in Doze (no dependency on the JS thread)
 - **Fake GPS detection** — detect mock locations and optionally reject them
 - **Geofencing** — monitor enter/exit events for circular regions
 - **Speed Monitoring** — configurable speed alerts with state-transition callbacks
@@ -213,6 +214,53 @@ NitroLocationModule.updateForegroundNotification('En Route', '2.5 km away');
 // Cleanup
 NitroLocationModule.destroy();
 ```
+
+### Live Push (background-safe per-fix POST)
+
+The JS thread is suspended when the screen is off or the app is backgrounded, so
+a `fetch()` driven by `onLocation` stops firing. **Live Push** moves the per-fix
+HTTP POST onto the native thread — which the location foreground service keeps
+alive — so the server keeps receiving positions in the background and in Doze.
+
+It's generic by design: the lib owns the transport, your app owns the schema.
+Each POST body is the parsed `extraFieldsJson` object with the location fields
+merged on top. Config is pushed down from JS on rare events (login, token
+refresh, new delivery); the native side then handles every fix on its own.
+
+A fix is sent only when all three gates are open: **tracking is running** (no fix
+otherwise) **and** push is **enabled** **and** a **config** is set. A `401`
+response auto-clears the config until JS re-configures with a fresh token.
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+import type { LivePushConfig } from 'react-native-nitro-location-tracking';
+
+// 1. Configure — on login / token refresh / new delivery (while JS is awake):
+const config: LivePushConfig = {
+  url: 'https://api.example.com/tracking', // full endpoint
+  authToken: token, // sent as `Authorization: Bearer <token>`
+  // Static fields merged into every POST body. A JSON string, so values may be
+  // string / number / bool / null. The location fields are added on top.
+  extraFieldsJson: JSON.stringify({ courier_id: 'c1', delivery_id: null, active: true }),
+  // false → body = { latitude, longitude, timestamp, ...extraFields }
+  // true  → also include speed, bearing, accuracy, altitude
+  includeFullPoint: false,
+};
+NitroLocationModule.configureLivePush(config);
+
+// 2. Toggle at runtime — cheap on/off that keeps config (duty / online state):
+NitroLocationModule.setLivePushEnabled(true);
+NitroLocationModule.setLivePushEnabled(false);
+
+// 3. Clear — on logout (wipes config and disables):
+NitroLocationModule.clearLivePush();
+```
+
+> Live Push complements — it does not replace — the WebSocket/batch sync. If a
+> push fails (e.g. transient network loss), the fix is dropped; the next
+> successful push corrects the server-side position. For a durable audit trail,
+> keep using the batch path. Server-side idempotency on `(id, timestamp)` is
+> recommended if both paths are active.
 
 ### Fake GPS Detection
 
@@ -758,6 +806,22 @@ interface ConnectionConfig {
 }
 ```
 
+#### `LivePushConfig`
+
+```ts
+interface LivePushConfig {
+  url: string; // full endpoint, e.g. https://api.example.com/tracking
+  authToken: string; // sent as `Authorization: Bearer <authToken>`
+  // JSON object string merged into every POST body alongside the location
+  // fields, e.g. '{"courier_id":"c1","delivery_id":null,"active":true}'.
+  // A string (not a typed map) so values may be string / number / bool / null.
+  extraFieldsJson: string;
+  // false → body carries { latitude, longitude, timestamp } only.
+  // true  → also include speed, bearing, accuracy, altitude.
+  includeFullPoint: boolean;
+}
+```
+
 #### `GeofenceRegion`
 
 ```ts
@@ -830,6 +894,9 @@ type PermissionStatus =
 | `onConnectionStateChange(callback)`          | `void`                      | Register connection state callback                                                       |
 | `onMessage(callback)`                        | `void`                      | Register incoming message callback                                                       |
 | `forceSync()`                                | `Promise<boolean>`          | Flush queued locations to server                                                         |
+| `configureLivePush(config)`                  | `void`                      | Set the native live-push endpoint, token, and body fields (call on login / token refresh / new delivery) |
+| `setLivePushEnabled(enabled)`                | `void`                      | Cheap runtime on/off for live push without losing config (call on duty/online state changes) |
+| `clearLivePush()`                            | `void`                      | Wipe live-push config and disable it (call on logout)                                    |
 | `isFakeGpsEnabled()`                         | `boolean`                   | Check if device-level mock location is enabled                                           |
 | `setRejectMockLocations(reject)`             | `void`                      | Auto-reject mock locations when `true`                                                   |
 | `addGeofence(region)`                        | `void`                      | Start monitoring a circular geofence region                                              |

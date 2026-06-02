@@ -40,6 +40,28 @@ export interface ConnectionConfig {
   syncIntervalMs: number; // how often to flush queue
 }
 
+/**
+ * Config for the native live pusher: a per-fix HTTP POST that runs on the
+ * native thread so it keeps firing while the JS thread is suspended (screen
+ * off / backgrounded / Doze). Generic by design — the lib owns transport, the
+ * app owns schema.
+ */
+export interface LivePushConfig {
+  url: string; // full endpoint, e.g. https://api.example.com/tracking
+  authToken: string; // sent as `Authorization: Bearer <authToken>`
+  /**
+   * JSON object string merged into every POST body alongside the location
+   * fields, e.g. '{"courier_id":"c1","delivery_id":null,"active":true}'.
+   * A string (not a typed map) so values may be string / number / bool / null.
+   */
+  extraFieldsJson: string;
+  /**
+   * false → body carries { latitude, longitude, timestamp } only.
+   * true  → also include speed, bearing, accuracy, altitude.
+   */
+  includeFullPoint: boolean;
+}
+
 export type LocationCallback = (location: LocationData) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MessageCallback = (message: string) => void;
@@ -115,6 +137,14 @@ export interface NitroLocationTracking
 
   onConnectionStateChange(callback: ConnectionStateCallback): void;
   onMessage(callback: MessageCallback): void;
+
+  // === Live Push (per-fix native POST, survives JS suspension) ===
+  /** Set endpoint + token + body fields. Call on login / token refresh / new delivery. */
+  configureLivePush(config: LivePushConfig): void;
+  /** Cheap runtime on/off without losing config. Call on duty/online state changes. */
+  setLivePushEnabled(enabled: boolean): void;
+  /** Wipe config and disable. Call on logout. */
+  clearLivePush(): void;
 
   // === Sync Control ===
   forceSync(): Promise<boolean>;

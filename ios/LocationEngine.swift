@@ -15,6 +15,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var pendingStartAfterPermission = false
 
     var onLocation: ((LocationData) -> Void)?
+    /// Native-side consumer of every fix, invoked alongside onLocation but
+    /// WITHOUT crossing the JS bridge. Lets app-side native code (e.g. a REST
+    /// pusher) keep delivering fixes while the JS thread is suspended
+    /// (screen off / backgrounded). See NitroLocationTracking.nativeLocationListener.
+    var onLocationNative: ((LocationData) -> Void)?
     var onMotionChange: ((Bool) -> Void)?
     var dbWriter: NativeDBWriter?
     var currentRideId: String?
@@ -166,6 +171,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Notify JS via Nitro callback
         onLocation?(data)
+        // Native consumer — fires even when the JS thread is suspended.
+        onLocationNative?(data)
 
         // Feed to speed monitor and trip calculator
         speedMonitor.feedLocation(data)
