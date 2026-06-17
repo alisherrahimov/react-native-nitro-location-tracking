@@ -36,7 +36,6 @@ class LocationEngine(private val context: Context) {
   var onLocationNative: ((LocationData) -> Unit)? = null
   var onMotionChange: ((Boolean) -> Unit)? = null
   var onMockLocationChanged: ((Boolean) -> Unit)? = null
-  var dbWriter: NativeDBWriter? = null
 //  var currentRideId: String? = null
   var rejectMockLocations: Boolean = false
   val speedMonitor = SpeedMonitor()

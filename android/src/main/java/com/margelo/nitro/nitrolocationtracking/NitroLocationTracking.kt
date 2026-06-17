@@ -41,7 +41,6 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var locationEngine: LocationEngine? = null
     private val livePusher = LivePusher()
     private var connectionManager = ConnectionManager()
-    private var dbWriter: NativeDBWriter? = null
     private var notificationService: NotificationService? = null
     private var geofenceManager: GeofenceManager? = null
     private var providerStatusMonitor: ProviderStatusMonitor? = null
@@ -71,15 +70,12 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             return false
         }
         locationEngine = LocationEngine(context)
-        dbWriter = NativeDBWriter(context)
         notificationService = NotificationService(context)
         geofenceManager = GeofenceManager(context)
         providerStatusMonitor = ProviderStatusMonitor(context)
         permissionStatusMonitor = PermissionStatusMonitor(context)
         mockLocationMonitor = MockLocationMonitor(context)
         airplaneModeMonitor = AirplaneModeMonitor(context)
-        locationEngine?.dbWriter = dbWriter
-        connectionManager.dbWriter = dbWriter
 
         // Forward every fix to (1) the built-in live pusher, and (2) the
         // process-wide native listener if the app registered one. Both run on

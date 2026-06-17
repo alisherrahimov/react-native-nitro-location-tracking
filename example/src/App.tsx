@@ -110,6 +110,13 @@ export default function App() {
   const [liveActivityEta, setLiveActivityEta] = useState(15);
   const [liveActivityDistance, setLiveActivityDistance] = useState(3200);
 
+  // ── Live Push State ──────────────────────────────────
+  // Native per-fix HTTP POST that keeps firing while the JS thread is
+  // suspended (screen off / backgrounded / Doze) — the engine that powers
+  // active background tracking.
+  const [livePushConfigured, setLivePushConfigured] = useState(false);
+  const [livePushEnabled, setLivePushEnabledState] = useState(false);
+
   // ── Fake GPS State ───────────────────────────────────
   const [rejectMock, setRejectMock] = useState(false);
   const [isMockActive, setIsMockActive] = useState<boolean | null>(null);
@@ -472,6 +479,61 @@ export default function App() {
     }
   }, []);
 
+  // ── Live Push Handlers ───────────────────────────────
+  // Lifecycle: configure on login / token refresh / new delivery →
+  // toggle with on-duty state → clear on logout.
+
+  // 1️⃣ Call on login, token refresh, or when a new delivery is assigned.
+  //    Sets the endpoint + auth token + the per-courier body fields the
+  //    native pusher merges into every POST.
+  const handleConfigureLivePush = useCallback(() => {
+    NitroLocation.configureLivePush({
+      // Full endpoint the native thread POSTs each fix to.
+      url: 'https://webhook.site/903f0d02-07da-468e-a787-c3e6e37f1796',
+      // Sent as `Authorization: Bearer <authToken>`.
+      authToken: 'REPLACE_WITH_REAL_JWT',
+      // JSON *string* merged into every POST body alongside the location
+      // fields. A string (not a typed map) so values may be
+      // string / number / bool / null. Update this whenever the active
+      // delivery changes (e.g. set `delivery_id`).
+      extraFieldsJson: JSON.stringify({
+        courier_id: 'courier-42',
+        delivery_id: null,
+        active: true,
+      }),
+      // false → body carries { latitude, longitude, timestamp } only.
+      // true  → also include speed, bearing, accuracy, altitude.
+      includeFullPoint: true,
+    });
+    setLivePushConfigured(true);
+    Alert.alert(
+      'Live Push',
+      'Configured. Native POST will fire per location fix even with the screen off.'
+    );
+  }, []);
+
+  // 2️⃣ Cheap runtime on/off — call on duty / online state changes.
+  //    Keeps the config, just flips whether POSTs are sent.
+  const handleToggleLivePush = useCallback(
+    (value: boolean) => {
+      if (!livePushConfigured) {
+        Alert.alert('Live Push', 'Configure live push first.');
+        return;
+      }
+      NitroLocation.setLivePushEnabled(value);
+      setLivePushEnabledState(value);
+    },
+    [livePushConfigured]
+  );
+
+  // 3️⃣ Call on logout — wipes config and disables.
+  const handleClearLivePush = useCallback(() => {
+    NitroLocation.clearLivePush();
+    setLivePushConfigured(false);
+    setLivePushEnabledState(false);
+    Alert.alert('Live Push', 'Config wiped and disabled.');
+  }, []);
+
   // ── Lifecycle Handler ────────────────────────────────
 
   const handleDestroy = useCallback(() => {
@@ -795,6 +857,42 @@ export default function App() {
             }}
           />
         </View>
+      </Section>
+
+      {/* ── Live Push (native background POST) ──────────── */}
+      <Section title="📡 Live Push (screen-off / background)">
+        <Text style={styles.muted}>
+          Native per-fix HTTP POST. Keeps firing while the JS thread is
+          suspended — screen off, backgrounded, or in Doze. This is what powers
+          active background tracking.
+        </Text>
+        <Text>Config: {livePushConfigured ? '🟢 Set' : '⚪ Not set'}</Text>
+        <View style={styles.switchRow}>
+          <Text>Live Push Enabled:</Text>
+          <Switch
+            value={livePushEnabled}
+            onValueChange={handleToggleLivePush}
+            disabled={!livePushConfigured}
+          />
+        </View>
+        <View style={styles.row}>
+          <Button
+            title="1. Configure (login / new delivery)"
+            onPress={handleConfigureLivePush}
+          />
+        </View>
+        <View style={styles.row}>
+          <Button
+            title="3. Clear (logout)"
+            onPress={handleClearLivePush}
+            color="#e67e22"
+            disabled={!livePushConfigured}
+          />
+        </View>
+        <Text style={styles.muted}>
+          Flow: configure on login/token-refresh/new-delivery → toggle enabled
+          with on-duty state → clear on logout.
+        </Text>
       </Section>
 
       {/* ── Lifecycle ──────────────────────────────────── */}

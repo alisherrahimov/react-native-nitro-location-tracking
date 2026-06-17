@@ -1,10 +1,6 @@
 package com.margelo.nitro.nitrolocationtracking
 
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class ConnectionManager {
@@ -17,12 +13,10 @@ class ConnectionManager {
 
     var onStateChange: ((ConnectionState) -> Unit)? = null
     var onMessage: ((String) -> Unit)? = null
-    var dbWriter: NativeDBWriter? = null
 
     val isConnected: Boolean get() = connected
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var syncRunnable: Runnable? = null
 
     fun configure(config: ConnectionConfig) {
         this.config = config
@@ -38,7 +32,6 @@ class ConnectionManager {
                 connected = true
                 reconnectAttempts = 0
                 onStateChange?.invoke(ConnectionState.CONNECTED)
-                startSyncTimer()
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
@@ -57,7 +50,6 @@ class ConnectionManager {
     }
 
     fun disconnect() {
-        syncRunnable?.let { handler.removeCallbacks(it) }
         webSocket?.close(1000, "bye")
         connected = false
         onStateChange?.invoke(ConnectionState.DISCONNECTED)
@@ -83,55 +75,8 @@ class ConnectionManager {
         handler.postDelayed({ connect() }, cfg.reconnectIntervalMs.toLong())
     }
 
-    private fun startSyncTimer() {
-        val cfg = config ?: return
-        syncRunnable = object : Runnable {
-            override fun run() {
-                flushQueue()
-                handler.postDelayed(this, cfg.syncIntervalMs.toLong())
-            }
-        }
-        handler.postDelayed(syncRunnable!!, cfg.syncIntervalMs.toLong())
-    }
-
-    fun flushQueue(): Boolean {
-        val cfg = config ?: return false
-        val db = dbWriter ?: return false
-        val queued = db.getUnsyncedBatch(cfg.batchSize.toInt())
-        if (queued.isEmpty()) return true
-
-        val ids = queued.map { it.first }
-        val arr = JSONArray()
-        for (pair in queued) {
-            val loc = pair.second
-            val obj = JSONObject()
-            obj.put("latitude", loc.latitude)
-            obj.put("longitude", loc.longitude)
-            obj.put("altitude", loc.altitude)
-            obj.put("speed", loc.speed)
-            obj.put("bearing", loc.bearing)
-            obj.put("accuracy", loc.accuracy)
-            obj.put("timestamp", loc.timestamp)
-            arr.put(obj)
-        }
-
-        if (connected) {
-            send(arr.toString())
-            db.markSynced(ids)
-        } else {
-            val body = arr.toString().toRequestBody("application/json".toMediaType())
-            val req = Request.Builder()
-                .url("${cfg.restUrl}/locations/batch")
-                .addHeader("Authorization", "Bearer ${cfg.authToken}")
-                .post(body).build()
-            client.newCall(req).enqueue(object : Callback {
-                override fun onResponse(call: Call, response: Response) {
-                    if (response.isSuccessful) db.markSynced(ids)
-                }
-
-                override fun onFailure(call: Call, e: java.io.IOException) {}
-            })
-        }
-        return true
-    }
+    // Location delivery now runs through LivePusher (per-fix native POST that
+    // survives JS suspension). There is no local queue to drain, so forceSync
+    // has nothing to flush — kept for API compatibility, always succeeds.
+    fun flushQueue(): Boolean = true
 }

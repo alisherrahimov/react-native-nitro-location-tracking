@@ -15,7 +15,6 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private let locationEngine = LocationEngine()
     private let livePusher = LivePusher()
     private let connectionManager = ConnectionManager()
-    private let dbWriter = NativeDBWriter()
     private let notificationService = NotificationService()
     private let geofenceManager = GeofenceManager()
     private let mockLocationMonitor = MockLocationMonitor()
@@ -33,8 +32,6 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 
     override init() {
         super.init()
-        locationEngine.dbWriter = dbWriter
-        connectionManager.dbWriter = dbWriter
 
         // Forward every fix to (1) the built-in live pusher, and (2) the
         // process-wide native listener if the app registered one. Both run on

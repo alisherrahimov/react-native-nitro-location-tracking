@@ -21,7 +21,6 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// (screen off / backgrounded). See NitroLocationTracking.nativeLocationListener.
     var onLocationNative: ((LocationData) -> Void)?
     var onMotionChange: ((Bool) -> Void)?
-    var dbWriter: NativeDBWriter?
     var currentRideId: String?
     var rejectMockLocations: Bool = false
     let speedMonitor = SpeedMonitor()
