@@ -158,8 +158,8 @@ const connectionConfig: ConnectionConfig = {
   authToken: 'your-auth-token',
   reconnectIntervalMs: 5000,
   maxReconnectAttempts: 10,
-  batchSize: 5, // locations per batch upload
-  syncIntervalMs: 10000, // flush queue every 10s
+  batchSize: 5, // reserved — no longer used (local queue removed)
+  syncIntervalMs: 10000, // reserved — no longer used (local queue removed)
 };
 
 function RideScreen() {
@@ -204,7 +204,8 @@ const tracking = NitroLocationModule.isTracking();
 // Stop tracking
 NitroLocationModule.stopTracking();
 
-// Force sync queued locations
+// No-op kept for API compatibility — there is no local queue to flush since
+// locations are delivered live via Live Push. Always resolves true.
 const synced = await NitroLocationModule.forceSync();
 
 // Notifications
@@ -256,11 +257,12 @@ NitroLocationModule.setLivePushEnabled(false);
 NitroLocationModule.clearLivePush();
 ```
 
-> Live Push complements — it does not replace — the WebSocket/batch sync. If a
-> push fails (e.g. transient network loss), the fix is dropped; the next
-> successful push corrects the server-side position. For a durable audit trail,
-> keep using the batch path. Server-side idempotency on `(id, timestamp)` is
-> recommended if both paths are active.
+> Live Push is fire-and-forget: there is **no local queue or offline buffer**.
+> If a push fails (e.g. transient network loss), the fix is dropped and the next
+> successful push corrects the server-side position. If you need a durable audit
+> trail, persist the fixes server-side on receipt. The WebSocket connection
+> (`connectWebSocket` / `sendMessage`) remains available for real-time messaging,
+> but it no longer carries an automatic location batch.
 
 ### Fake GPS Detection
 
@@ -801,8 +803,8 @@ interface ConnectionConfig {
   authToken: string;
   reconnectIntervalMs: number;
   maxReconnectAttempts: number;
-  batchSize: number; // locations per batch upload
-  syncIntervalMs: number; // how often to flush queue
+  batchSize: number; // reserved — no longer used (local queue removed)
+  syncIntervalMs: number; // reserved — no longer used (local queue removed)
 }
 ```
 
@@ -893,7 +895,7 @@ type PermissionStatus =
 | `getConnectionState()`                       | `ConnectionState`           | Get current connection state                                                             |
 | `onConnectionStateChange(callback)`          | `void`                      | Register connection state callback                                                       |
 | `onMessage(callback)`                        | `void`                      | Register incoming message callback                                                       |
-| `forceSync()`                                | `Promise<boolean>`          | Flush queued locations to server                                                         |
+| `forceSync()`                                | `Promise<boolean>`          | No-op kept for API compatibility (local queue removed; use Live Push). Always resolves `true` |
 | `configureLivePush(config)`                  | `void`                      | Set the native live-push endpoint, token, and body fields (call on login / token refresh / new delivery) |
 | `setLivePushEnabled(enabled)`                | `void`                      | Cheap runtime on/off for live push without losing config (call on duty/online state changes) |
 | `clearLivePush()`                            | `void`                      | Wipe live-push config and disable it (call on logout)                                    |
