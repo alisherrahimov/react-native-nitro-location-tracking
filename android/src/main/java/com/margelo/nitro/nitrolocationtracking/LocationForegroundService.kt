@@ -2,9 +2,12 @@ package com.margelo.nitro.nitrolocationtracking
 
 import android.app.*
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 
 class LocationForegroundService : Service() {
     companion object {
@@ -26,16 +29,16 @@ class LocationForegroundService : Service() {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
                 .createNotificationChannel(channel)
         }
-        // Must call startForeground immediately to avoid ForegroundServiceDidNotStartInTimeException
-        startForeground(NOTIFICATION_ID, buildNotification("Location Active", "Tracking your location"))
+        // Must call startForeground immediately to avoid
+        // ForegroundServiceDidNotStartInTimeException.
+        promoteToForeground("Location Active", "Tracking your location")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val title = intent?.getStringExtra("title") ?: "Location Active"
         val text = intent?.getStringExtra("text") ?: "Tracking your location"
         when (intent?.action) {
-            ACTION_START, null -> startForeground(
-                NOTIFICATION_ID, buildNotification(title, text))
+            ACTION_START, null -> promoteToForeground(title, text)
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -45,6 +48,42 @@ class LocationForegroundService : Service() {
                 NOTIFICATION_ID, buildNotification(title, text))
         }
         return START_STICKY
+    }
+
+    /**
+     * Promote to a foreground service. On Android 14+ (API 34) the OS validates
+     * that a runtime location permission is granted before allowing a
+     * `location`-typed FGS; if it is not (never granted, revoked, or started
+     * from the background) startForeground throws SecurityException — and on
+     * Android 12+ a background start can throw ForegroundServiceStartNotAllowedException.
+     *
+     * We must not let that escape: an unhandled throw both crashes the process
+     * AND leaves the service un-promoted, which then trips the
+     * ForegroundServiceDidNotStartInTimeException watchdog. Instead we catch and
+     * stopSelf() so the service shuts down cleanly.
+     */
+    private fun promoteToForeground(title: String, text: String) {
+        val notification = buildNotification(title, text)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(
+                "LocationFGS",
+                "startForeground failed (${e.javaClass.simpleName}: ${e.message}); " +
+                    "stopping service to avoid crash/watchdog kill."
+            )
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     private fun buildNotification(title: String, text: String): Notification {
