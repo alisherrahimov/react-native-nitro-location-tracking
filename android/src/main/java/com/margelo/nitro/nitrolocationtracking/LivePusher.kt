@@ -35,8 +35,16 @@ class LivePusher {
   @Volatile private var config: LivePushConfig? = null
   @Volatile private var enabled = false
 
+  /**
+   * Optional observer of each POST outcome. Invoked from OkHttp's dispatcher
+   * thread. Fires only while the JS thread is alive — results that land while
+   * JS is suspended are not buffered (Nitro owns the JS-side delivery).
+   */
+  @Volatile private var onResult: ((LivePushResult) -> Unit)? = null
+
   fun configure(c: LivePushConfig) { config = c }
   fun setEnabled(value: Boolean) { enabled = value }
+  fun setOnResult(cb: ((LivePushResult) -> Unit)?) { onResult = cb }
   fun clear() { config = null; enabled = false }
 
   fun push(loc: LocationData) {
@@ -77,7 +85,12 @@ class LivePusher {
     client.newCall(req).enqueue(object : Callback {
       override fun onResponse(call: Call, response: Response) {
         response.use {
-          if (it.code == 401) {
+          val code = it.code
+          val ok = code in 200..299
+          onResult?.invoke(
+            LivePushResult(ok, code.toDouble(), if (ok) "" else code.toString())
+          )
+          if (code == 401) {
             // Token rotated while JS was asleep. Drop config so we stop
             // spamming 401s; JS re-configures on its next wake-up.
             Log.w(TAG, "401 — clearing stale config until JS re-configures")
@@ -89,6 +102,7 @@ class LivePusher {
       override fun onFailure(call: Call, e: IOException) {
         // Fire-and-forget: a dropped fix is corrected by the next one.
         Log.w(TAG, "push failed: ${e.message}")
+        onResult?.invoke(LivePushResult(false, 0.0, e.message ?: "network error"))
       }
     })
   }

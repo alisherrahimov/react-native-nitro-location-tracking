@@ -139,6 +139,10 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         livePusher.clear()
     }
 
+    func onLivePushResult(callback: @escaping (_ result: LivePushResult) -> Void) throws {
+        livePusher.setOnResult(callback)
+    }
+
     // MARK: - Sync Control
 
     func forceSync() throws -> Promise<Bool> {

@@ -116,6 +116,9 @@ export default function App() {
   // active background tracking.
   const [livePushConfigured, setLivePushConfigured] = useState(false);
   const [livePushEnabled, setLivePushEnabledState] = useState(false);
+  const [lastLivePushResult, setLastLivePushResult] = useState<string | null>(
+    null
+  );
 
   // ── Fake GPS State ───────────────────────────────────
   const [rejectMock, setRejectMock] = useState(false);
@@ -505,6 +508,15 @@ export default function App() {
       // true  → also include speed, bearing, accuracy, altitude.
       includeFullPoint: true,
     });
+    // Observe each POST outcome. Foreground-only: results that land while the
+    // JS thread is suspended (screen off) are dropped, not buffered — so this
+    // is for live observability, not guaranteed delivery confirmation.
+    NitroLocation.onLivePushResult((r) => {
+      console.log('[livePush]', r.ok ? 'ok' : 'fail', r.statusCode, r.error);
+      setLastLivePushResult(
+        r.ok ? `✅ ${r.statusCode}` : `❌ ${r.statusCode || 'net'} ${r.error}`
+      );
+    });
     setLivePushConfigured(true);
     Alert.alert(
       'Live Push',
@@ -531,6 +543,7 @@ export default function App() {
     NitroLocation.clearLivePush();
     setLivePushConfigured(false);
     setLivePushEnabledState(false);
+    setLastLivePushResult(null);
     Alert.alert('Live Push', 'Config wiped and disabled.');
   }, []);
 
@@ -875,6 +888,7 @@ export default function App() {
             disabled={!livePushConfigured}
           />
         </View>
+        <Text>Last push result: {lastLivePushResult ?? '—'}</Text>
         <View style={styles.row}>
           <Button
             title="1. Configure (login / new delivery)"

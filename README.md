@@ -255,8 +255,24 @@ NitroLocationModule.setLivePushEnabled(false);
 
 // 3. Clear — on logout (wipes config and disables):
 NitroLocationModule.clearLivePush();
+
+// Optional: observe each POST outcome (foreground only — see caveat below):
+NitroLocationModule.onLivePushResult((r) => {
+  if (!r.ok) {
+    console.warn('live push failed', r.statusCode, r.error);
+    // e.g. on 401, re-authenticate and call configureLivePush again
+  }
+});
 ```
 
+> **`onLivePushResult` is foreground-only.** The POST keeps firing natively
+> while the JS thread is suspended (screen off / backgrounded / Doze), but the
+> result callback only reaches JS while JS is alive — results that occur during
+> suspension are **dropped, not buffered**. Use it for foreground observability
+> (a "last sync OK" indicator, surfacing a 401 to trigger re-auth), not as a
+> guaranteed delivery-confirmation channel. `statusCode` is the HTTP code (or
+> `0` for a network error / timeout); `error` is `''` on success.
+>
 > Live Push is fire-and-forget: there is **no local queue or offline buffer**.
 > If a push fails (e.g. transient network loss), the fix is dropped and the next
 > successful push corrects the server-side position. If you need a durable audit
@@ -824,6 +840,16 @@ interface LivePushConfig {
 }
 ```
 
+#### `LivePushResult`
+
+```ts
+interface LivePushResult {
+  ok: boolean; // true on a 2xx response
+  statusCode: number; // HTTP status code, or 0 for a network error / timeout
+  error: string; // '' on success, else a short message ("timeout", "401", …)
+}
+```
+
 #### `GeofenceRegion`
 
 ```ts
@@ -899,6 +925,7 @@ type PermissionStatus =
 | `configureLivePush(config)`                  | `void`                      | Set the native live-push endpoint, token, and body fields (call on login / token refresh / new delivery) |
 | `setLivePushEnabled(enabled)`                | `void`                      | Cheap runtime on/off for live push without losing config (call on duty/online state changes) |
 | `clearLivePush()`                            | `void`                      | Wipe live-push config and disable it (call on logout)                                    |
+| `onLivePushResult(callback)`                 | `void`                      | Observe each live-push POST outcome (`LivePushResult`). Foreground-only — results during JS suspension are dropped, not buffered |
 | `isFakeGpsEnabled()`                         | `boolean`                   | Check if device-level mock location is enabled                                           |
 | `setRejectMockLocations(reject)`             | `void`                      | Auto-reject mock locations when `true`                                                   |
 | `addGeofence(region)`                        | `void`                      | Start monitoring a circular geofence region                                              |

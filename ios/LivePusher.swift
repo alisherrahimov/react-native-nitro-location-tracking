@@ -18,6 +18,10 @@ final class LivePusher {
   private let lock = NSLock()
   private var config: LivePushConfig?
   private var enabled = false
+  /// Optional observer of each POST outcome. Invoked from URLSession's
+  /// completion handler. Fires only while the JS thread is alive — results
+  /// that land while JS is suspended are not buffered (Nitro owns JS delivery).
+  private var onResult: ((LivePushResult) -> Void)?
   private let session = URLSession(configuration: .default)
 
   func configure(_ c: LivePushConfig) {
@@ -26,6 +30,10 @@ final class LivePusher {
 
   func setEnabled(_ value: Bool) {
     lock.lock(); enabled = value; lock.unlock()
+  }
+
+  func setOnResult(_ cb: ((LivePushResult) -> Void)?) {
+    lock.lock(); onResult = cb; lock.unlock()
   }
 
   func clear() {
@@ -64,11 +72,22 @@ final class LivePusher {
     req.setValue("Bearer \(cfg.authToken)", forHTTPHeaderField: "Authorization")
     req.httpBody = body
 
-    session.dataTask(with: req) { [weak self] _, response, _ in
-      // Token rotated while JS was asleep. Drop config so we stop spamming
-      // 401s; JS re-configures on its next wake-up.
-      if (response as? HTTPURLResponse)?.statusCode == 401 {
-        self?.lock.lock(); self?.config = nil; self?.lock.unlock()
+    session.dataTask(with: req) { [weak self] _, response, error in
+      guard let self else { return }
+      self.lock.lock(); let cb = self.onResult; self.lock.unlock()
+
+      if let http = response as? HTTPURLResponse {
+        let code = http.statusCode
+        let ok = (200...299).contains(code)
+        cb?(LivePushResult(ok: ok, statusCode: Double(code), error: ok ? "" : String(code)))
+        // Token rotated while JS was asleep. Drop config so we stop spamming
+        // 401s; JS re-configures on its next wake-up.
+        if code == 401 {
+          self.lock.lock(); self.config = nil; self.lock.unlock()
+        }
+      } else {
+        // Network error / timeout — no HTTP response.
+        cb?(LivePushResult(ok: false, statusCode: 0, error: error?.localizedDescription ?? "network error"))
       }
     }.resume()
   }

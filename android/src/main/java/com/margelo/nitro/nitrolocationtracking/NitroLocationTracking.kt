@@ -257,6 +257,10 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         livePusher.clear()
     }
 
+    override fun onLivePushResult(callback: (result: LivePushResult) -> Unit) {
+        livePusher.setOnResult(callback)
+    }
+
     // === Sync Control ===
 
     override fun forceSync(): Promise<Boolean> {

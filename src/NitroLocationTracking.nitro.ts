@@ -62,6 +62,25 @@ export interface LivePushConfig {
   includeFullPoint: boolean;
 }
 
+/**
+ * Outcome of a single native Live Push POST, delivered to the
+ * `onLivePushResult` callback.
+ *
+ * IMPORTANT: this only reaches JS while the JS thread is alive (app
+ * foregrounded). The POST itself still fires while JS is suspended (screen
+ * off / backgrounded / Doze), but results that occur during suspension are
+ * dropped — they are NOT buffered. Use this for foreground observability
+ * (debug overlay, "last sync OK" indicator, surfacing a 401 to re-auth), not
+ * as a guaranteed delivery-confirmation channel.
+ */
+export interface LivePushResult {
+  ok: boolean; // true on a 2xx response
+  statusCode: number; // HTTP status code, or 0 for a network error / timeout
+  error: string; // '' on success, else a short message ("timeout", "401", …)
+}
+
+export type LivePushResultCallback = (result: LivePushResult) => void;
+
 export type LocationCallback = (location: LocationData) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 export type MessageCallback = (message: string) => void;
@@ -145,6 +164,12 @@ export interface NitroLocationTracking
   setLivePushEnabled(enabled: boolean): void;
   /** Wipe config and disable. Call on logout. */
   clearLivePush(): void;
+  /**
+   * Observe the outcome of each native Live Push POST. Fires only while the JS
+   * thread is alive (app foregrounded); results during JS suspension are
+   * dropped, not buffered. See `LivePushResult`.
+   */
+  onLivePushResult(callback: LivePushResultCallback): void;
 
   // === Sync Control ===
   forceSync(): Promise<boolean>;

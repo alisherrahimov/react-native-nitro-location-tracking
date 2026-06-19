@@ -42,6 +42,8 @@ export type {
   LocationConfig,
   ConnectionConfig,
   LivePushConfig,
+  LivePushResult,
+  LivePushResultCallback,
   GeofenceRegion,
   GeofenceEvent,
   GeofenceCallback,
