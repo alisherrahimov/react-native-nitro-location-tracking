@@ -103,13 +103,22 @@ const granted = await requestLocationPermission(
 
 > On iOS, permissions are handled via `Info.plist` and the system prompt on first access.
 
-### Location Tracking with `useDriverLocation`
+**Single entry point.** Everything runs through the default export,
+`NitroLocationModule` — the native HybridObject. There are no built-in React
+hooks; wire callbacks into your own component state with `useState` /
+`useEffect`. This keeps one source of truth and avoids hidden lifecycle magic.
 
-The simplest way to track location using the built-in React hook:
+### Location Tracking
+
+Configure the module, subscribe to updates, then start/stop tracking:
 
 ```tsx
-import { useDriverLocation } from 'react-native-nitro-location-tracking';
-import type { LocationConfig } from 'react-native-nitro-location-tracking';
+import { useEffect, useState } from 'react';
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+import type {
+  LocationConfig,
+  LocationData,
+} from 'react-native-nitro-location-tracking';
 
 const config: LocationConfig = {
   desiredAccuracy: 'high', // 'high' | 'balanced' | 'low'
@@ -124,8 +133,24 @@ const config: LocationConfig = {
 };
 
 function DriverScreen() {
-  const { location, isMoving, isTracking, startTracking, stopTracking } =
-    useDriverLocation(config);
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+
+  useEffect(() => {
+    NitroLocationModule.configure(config);
+    NitroLocationModule.onLocation(setLocation);
+    NitroLocationModule.onMotionChange(setIsMoving);
+  }, []);
+
+  const start = () => {
+    NitroLocationModule.startTracking();
+    setIsTracking(true);
+  };
+  const stop = () => {
+    NitroLocationModule.stopTracking();
+    setIsTracking(false);
+  };
 
   return (
     <View>
@@ -137,20 +162,38 @@ function DriverScreen() {
           {'\n'}Speed: {location.speed} m/s | Bearing: {location.bearing}°
         </Text>
       )}
-      <Button title="Start" onPress={startTracking} />
-      <Button title="Stop" onPress={stopTracking} />
+      <Button title="Start" onPress={start} />
+      <Button title="Stop" onPress={stop} />
     </View>
   );
 }
 ```
 
-### WebSocket Connection with `useRideConnection`
-
-Manage a WebSocket connection for real-time location sync:
+Other tracking calls on the module:
 
 ```tsx
-import { useRideConnection } from 'react-native-nitro-location-tracking';
-import type { ConnectionConfig } from 'react-native-nitro-location-tracking';
+// Get current location (one-shot)
+const current = await NitroLocationModule.getCurrentLocation();
+
+// Check tracking state
+const tracking = NitroLocationModule.isTracking();
+
+// No-op kept for API compatibility — there is no local queue to flush since
+// locations are delivered live via Live Push. Always resolves true.
+const synced = await NitroLocationModule.forceSync();
+```
+
+### WebSocket Connection
+
+Manage a WebSocket connection for real-time location sync directly on the module:
+
+```tsx
+import { useEffect, useState } from 'react';
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+import type {
+  ConnectionConfig,
+  ConnectionState,
+} from 'react-native-nitro-location-tracking';
 
 const connectionConfig: ConnectionConfig = {
   wsUrl: 'wss://api.example.com/ws/driver',
@@ -163,51 +206,32 @@ const connectionConfig: ConnectionConfig = {
 };
 
 function RideScreen() {
-  const { connectionState, lastMessage, connect, disconnect, send } =
-    useRideConnection(connectionConfig);
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>('disconnected');
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    NitroLocationModule.configureConnection(connectionConfig);
+    NitroLocationModule.onConnectionStateChange(setConnectionState);
+    NitroLocationModule.onMessage(setLastMessage);
+    return () => NitroLocationModule.disconnectWebSocket();
+  }, []);
 
   return (
     <View>
       <Text>Connection: {connectionState}</Text>
       <Text>Last message: {lastMessage}</Text>
-      <Button title="Connect" onPress={connect} />
-      <Button title="Disconnect" onPress={disconnect} />
-      <Button title="Send Ping" onPress={() => send('ping')} />
+      <Button title="Connect" onPress={() => NitroLocationModule.connectWebSocket()} />
+      <Button title="Disconnect" onPress={() => NitroLocationModule.disconnectWebSocket()} />
+      <Button title="Send Ping" onPress={() => NitroLocationModule.sendMessage('ping')} />
     </View>
   );
 }
 ```
 
-### Direct Module Access
-
-For advanced use cases, access the native module directly:
+Notifications and cleanup on the module:
 
 ```tsx
-import NitroLocationModule from 'react-native-nitro-location-tracking';
-
-// Configure and start tracking
-NitroLocationModule.configure(config);
-NitroLocationModule.onLocation((location) => {
-  console.log('New location:', location);
-});
-NitroLocationModule.onMotionChange((isMoving) => {
-  console.log('Motion changed:', isMoving);
-});
-NitroLocationModule.startTracking();
-
-// Get current location (one-shot)
-const current = await NitroLocationModule.getCurrentLocation();
-
-// Check tracking state
-const tracking = NitroLocationModule.isTracking();
-
-// Stop tracking
-NitroLocationModule.stopTracking();
-
-// No-op kept for API compatibility — there is no local queue to flush since
-// locations are delivered live via Live Push. Always resolves true.
-const synced = await NitroLocationModule.forceSync();
-
 // Notifications
 NitroLocationModule.showLocalNotification('Ride Started', 'Heading to pickup');
 NitroLocationModule.updateForegroundNotification('En Route', '2.5 km away');
@@ -316,22 +340,27 @@ NitroLocationModule.onLocation((location) => {
 Use `LocationSmoother` to animate a map marker smoothly between location updates:
 
 ```tsx
-import { useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Marker } from 'react-native-maps';
-import {
-  useDriverLocation,
+import NitroLocationModule, {
   LocationSmoother,
 } from 'react-native-nitro-location-tracking';
+import type { LocationData } from 'react-native-nitro-location-tracking';
 
 function MapScreen() {
   const markerRef = useRef(null);
   const smootherRef = useRef(new LocationSmoother(markerRef));
+  const [location, setLocation] = useState<LocationData | null>(null);
 
-  const { location, startTracking } = useDriverLocation(config);
-
-  // Feed each new location into the smoother
-  const onLocation = useCallback((loc) => {
-    smootherRef.current.feed(loc);
+  useEffect(() => {
+    NitroLocationModule.configure(config);
+    NitroLocationModule.onLocation((loc) => {
+      // Feed each new location into the smoother, then keep the marker mounted
+      smootherRef.current.feed(loc);
+      setLocation(loc);
+    });
+    NitroLocationModule.startTracking();
+    return () => NitroLocationModule.stopTracking();
   }, []);
 
   return (
@@ -896,14 +925,9 @@ type PermissionStatus =
   | 'always';
 ```
 
-### Hooks
-
-| Hook                        | Returns                                                           | Description                            |
-| --------------------------- | ----------------------------------------------------------------- | -------------------------------------- |
-| `useDriverLocation(config)` | `{ location, isMoving, isTracking, startTracking, stopTracking }` | Manages location tracking lifecycle    |
-| `useRideConnection(config)` | `{ connectionState, lastMessage, connect, disconnect, send }`     | Manages WebSocket connection lifecycle |
-
 ### Native Module Methods
+
+All functionality is exposed on the default export, `NitroLocationModule`.
 
 | Method                                       | Returns                     | Description                                                                              |
 | -------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |

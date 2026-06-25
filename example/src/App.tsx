@@ -11,16 +11,15 @@ import {
   View,
 } from 'react-native';
 import type {
+  ConnectionState,
   GeofenceEvent,
+  LocationData,
   LocationProviderStatus,
   PermissionStatus,
   SpeedAlertType,
   TripStats,
 } from 'react-native-nitro-location-tracking';
-import NitroLocation, {
-  useDriverLocation,
-  useRideConnection,
-} from 'react-native-nitro-location-tracking';
+import NitroLocation from 'react-native-nitro-location-tracking';
 import { requestLocationPermission } from '../../src/requestPermission';
 
 // ─── Section Component ────────────────────────────────
@@ -64,9 +63,13 @@ const STATUS_LABELS: Record<LiveActivityStatus, string> = {
 
 // ─── Main App ─────────────────────────────────────────
 export default function App() {
-  // ── Location Tracking ────────────────────────────────
-  const { location, isMoving, isTracking, startTracking, stopTracking } =
-    useDriverLocation({
+  // ── Location Tracking (direct NitroLocation module) ──
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+
+  useEffect(() => {
+    NitroLocation.configure({
       desiredAccuracy: 'high',
       distanceFilter: 0,
       intervalMs: 1000,
@@ -77,10 +80,26 @@ export default function App() {
       foregroundNotificationTitle: 'NitroLocation Example',
       foregroundNotificationText: 'Tracking your location...',
     });
+    NitroLocation.onLocation(setLocation);
+    NitroLocation.onMotionChange(setIsMoving);
+  }, []);
 
-  // ── WebSocket Connection ─────────────────────────────
-  const { connectionState, lastMessage, connect, disconnect, send } =
-    useRideConnection({
+  const startTracking = useCallback(() => {
+    NitroLocation.startTracking();
+    setIsTracking(true);
+  }, []);
+  const stopTracking = useCallback(() => {
+    NitroLocation.stopTracking();
+    setIsTracking(false);
+  }, []);
+
+  // ── WebSocket Connection (direct NitroLocation module) ──
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>('disconnected');
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    NitroLocation.configureConnection({
       wsUrl: 'wss://echo.websocket.org',
       restUrl: 'https://httpbin.org',
       authToken: 'test-token',
@@ -89,6 +108,19 @@ export default function App() {
       batchSize: 50,
       syncIntervalMs: 100,
     });
+    NitroLocation.onConnectionStateChange(setConnectionState);
+    NitroLocation.onMessage(setLastMessage);
+    return () => {
+      NitroLocation.disconnectWebSocket();
+    };
+  }, []);
+
+  const connect = useCallback(() => NitroLocation.connectWebSocket(), []);
+  const disconnect = useCallback(
+    () => NitroLocation.disconnectWebSocket(),
+    []
+  );
+  const send = useCallback((m: string) => NitroLocation.sendMessage(m), []);
 
   // ── Geofencing State ─────────────────────────────────
   const [geofenceLogs, setGeofenceLogs] = useState<string[]>([]);
