@@ -29,10 +29,17 @@ export type LiveActivityState = {
 
 export { calculateBearing, shortestRotation } from './bearing';
 export { LocationSmoother } from './LocationSmoother';
+export { SnapToRoad } from './SnapToRoad';
+export type {
+  SnapPoint,
+  SnapToRoadOptions,
+  SnapToRoadProvider,
+} from './SnapToRoad';
 export type {
   ConnectionConfig,
   ConnectionState,
   ConnectionStateCallback,
+  EtaResult,
   GeofenceCallback,
   GeofenceEvent,
   GeofenceRegion,
