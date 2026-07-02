@@ -170,7 +170,7 @@ namespace margelo::nitro::nitrolocationtracking {
       int ch = 0;
       std::string geohash = "";
 
-      while (geohash.length() < precision) {
+      while (static_cast<int>(geohash.length()) < precision) {
           if (is_even) {
               double mid = (lon[0] + lon[1]) / 2;
               if (longitude > mid) {
