@@ -25,6 +25,29 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     var rejectMockLocations: Bool = false
     let speedMonitor = SpeedMonitor()
     let tripCalculator = TripCalculator()
+
+    // Odometer — total meters traveled while tracking, persisted across app
+    // kill / reboot via UserDefaults.
+    private static let odometerKey = "nitro_location_odometer_meters"
+    private(set) var odometerMeters: Double =
+        UserDefaults.standard.double(forKey: LocationEngine.odometerKey)
+    // Last accepted (post-filter) position used for odometer deltas.
+    private var odometerLast: (lat: Double, lng: Double)?
+
+    func resetOdometer() {
+        odometerMeters = 0
+        odometerLast = nil
+        UserDefaults.standard.set(0.0, forKey: LocationEngine.odometerKey)
+    }
+
+    // Live Kalman smoother — non-nil only while kalmanFilter is enabled.
+    private var kalman: LocationKalmanFilter?
+
+    // Motion state machine — drives onMotionChange and (when enabled) adaptive accuracy.
+    private let motionManager = MotionActivityManager()
+    private var currentConfig: LocationConfig?
+    private var isMovingState = false
+    private var stationaryTimer: Timer?
     var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)? {
         didSet {
             // Emit current status immediately when the callback is first set
@@ -62,6 +85,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     func configure(_ config: LocationConfig) {
+        currentConfig = config
         switch config.desiredAccuracy {
         case .high:
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
@@ -84,8 +108,27 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             locationManager.requestAlwaysAuthorization()
             return
         }
+        // (Re)build the Kalman smoother for this session so stale state from a
+        // prior run never produces a spurious first-fix jump.
+        if currentConfig?.kalmanFilter == true {
+            kalman = LocationKalmanFilter(processNoiseMps: currentConfig?.kalmanProcessNoiseMps ?? 1.0)
+        } else {
+            kalman = nil
+        }
         locationManager.startUpdatingLocation()
         tracking = true
+        startMotionEngine()
+    }
+
+    private func startMotionEngine() {
+        isMovingState = false
+        cancelStationaryTimer()
+        motionManager.onMotionChange = { [weak self] moving in
+            self?.onMotionSignal(moving, fromMotionAPI: true)
+        }
+        // Returns false when Motion & Fitness is unavailable / denied; in that
+        // case didUpdateLocations drives motion from speed (see onMotionSignal).
+        motionManager.start()
     }
 
     func requestPermission(completion: @escaping (CLAuthorizationStatus) -> Void) {
@@ -100,7 +143,63 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     func stop() {
         locationManager.stopUpdatingLocation()
+        motionManager.stop()
+        cancelStationaryTimer()
+        isMovingState = false
         tracking = false
+    }
+
+    // MARK: - Motion state machine
+
+    private func onMotionSignal(_ moving: Bool, fromMotionAPI: Bool) {
+        // When Core Motion is active it is authoritative; ignore the speed-based
+        // fallback so the two sources don't fight.
+        if !fromMotionAPI && motionManager.isAvailable { return }
+
+        if moving {
+            cancelStationaryTimer()
+            if !isMovingState { setMotionState(true) }
+        } else {
+            // Debounce: only declare stationary after stopTimeout of stillness.
+            if isMovingState && stationaryTimer == nil { scheduleStationary() }
+        }
+    }
+
+    private func scheduleStationary() {
+        cancelStationaryTimer()
+        let minutes = currentConfig?.stopTimeout ?? 5
+        let timeout = max(minutes * 60, 0)
+        stationaryTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.stationaryTimer = nil
+            if self.isMovingState { self.setMotionState(false) }
+        }
+    }
+
+    private func cancelStationaryTimer() {
+        stationaryTimer?.invalidate()
+        stationaryTimer = nil
+    }
+
+    private func setMotionState(_ moving: Bool) {
+        isMovingState = moving
+        onMotionChange?(moving)
+        if currentConfig?.adaptiveAccuracy == true { applyAdaptiveAccuracy(moving) }
+    }
+
+    private func applyAdaptiveAccuracy(_ moving: Bool) {
+        guard let config = currentConfig, tracking else { return }
+        if moving {
+            switch config.desiredAccuracy {
+            case .high: locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            case .balanced: locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            default: locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+            }
+            locationManager.distanceFilter = config.distanceFilter > 0 ? config.distanceFilter : kCLDistanceFilterNone
+        } else {
+            locationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+            locationManager.distanceFilter = max(config.distanceFilter, 100)
+        }
     }
   
 
@@ -168,17 +267,53 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             return
         }
 
+        // Accuracy gate: drop low-confidence fixes before anything downstream sees them.
+        let accuracyFilter = currentConfig?.accuracyFilter ?? 0
+        if accuracyFilter > 0 && data.accuracy > accuracyFilter {
+            return
+        }
+
+        // Kalman smoothing: replace lat/lng with the filtered estimate (speed/
+        // bearing stay as reported). Everything downstream uses `emitted`.
+        let emitted: LocationData
+        if let k = kalman {
+            let (lat, lng) = k.process(
+                latitude: data.latitude, longitude: data.longitude,
+                accuracyMeters: data.accuracy, timeMs: data.timestamp
+            )
+            emitted = LocationData(
+                latitude: lat, longitude: lng, altitude: data.altitude,
+                speed: data.speed, bearing: data.bearing, accuracy: data.accuracy,
+                timestamp: data.timestamp, isMockLocation: isMock
+            )
+        } else {
+            emitted = data
+        }
+
+        // Odometer: accumulate straight-line distance between consecutive accepted
+        // (post-filter) fixes. Ignore GPS jitter (<0.5m) and implausible jumps (>10km).
+        if let last = odometerLast {
+            let delta = CLLocation(latitude: last.lat, longitude: last.lng)
+                .distance(from: CLLocation(latitude: emitted.latitude, longitude: emitted.longitude))
+            if delta >= 0.5 && delta <= 10000 {
+                odometerMeters += delta
+                UserDefaults.standard.set(odometerMeters, forKey: LocationEngine.odometerKey)
+            }
+        }
+        odometerLast = (emitted.latitude, emitted.longitude)
+
         // Notify JS via Nitro callback
-        onLocation?(data)
+        onLocation?(emitted)
         // Native consumer — fires even when the JS thread is suspended.
-        onLocationNative?(data)
+        onLocationNative?(emitted)
 
         // Feed to speed monitor and trip calculator
-        speedMonitor.feedLocation(data)
-        tripCalculator.feedLocation(data)
+        speedMonitor.feedLocation(emitted)
+        tripCalculator.feedLocation(emitted)
 
-        // Motion detection
-        onMotionChange?(location.speed >= 0.5)
+        // Motion signal from speed — used only when Core Motion isn't the
+        // authoritative source (see onMotionSignal).
+        onMotionSignal(location.speed >= 0.5, fromMotionAPI: false)
     }
 
     func locationManager(_ manager: CLLocationManager,

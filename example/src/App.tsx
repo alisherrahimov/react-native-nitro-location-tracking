@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import type {
   ConnectionState,
+  EtaResult,
   GeofenceEvent,
   LocationData,
   LocationProviderStatus,
@@ -79,6 +80,10 @@ export default function App() {
       startOnBoot: true,
       foregroundNotificationTitle: 'NitroLocation Example',
       foregroundNotificationText: 'Tracking your location...',
+      adaptiveAccuracy: true, // downgrade GPS when stationary to save battery
+      accuracyFilter: 50, // drop fixes worse than 50m accuracy
+      kalmanFilter: true, // smooth the live stream (jitter + spikes)
+      kalmanProcessNoiseMps: 1.0,
     });
     NitroLocation.onLocation(setLocation);
     NitroLocation.onMotionChange(setIsMoving);
@@ -101,12 +106,9 @@ export default function App() {
   useEffect(() => {
     NitroLocation.configureConnection({
       wsUrl: 'wss://echo.websocket.org',
-      restUrl: 'https://httpbin.org',
       authToken: 'test-token',
       reconnectIntervalMs: 3000,
       maxReconnectAttempts: 5,
-      batchSize: 50,
-      syncIntervalMs: 100,
     });
     NitroLocation.onConnectionStateChange(setConnectionState);
     NitroLocation.onMessage(setLastMessage);
@@ -116,10 +118,7 @@ export default function App() {
   }, []);
 
   const connect = useCallback(() => NitroLocation.connectWebSocket(), []);
-  const disconnect = useCallback(
-    () => NitroLocation.disconnectWebSocket(),
-    []
-  );
+  const disconnect = useCallback(() => NitroLocation.disconnectWebSocket(), []);
   const send = useCallback((m: string) => NitroLocation.sendMessage(m), []);
 
   // ── Geofencing State ─────────────────────────────────
@@ -167,6 +166,21 @@ export default function App() {
   const [permissionStatus, setPermissionStatus] =
     useState<PermissionStatus | null>(null);
   const [permissionLogs, setPermissionLogs] = useState<string[]>([]);
+
+  // ── Odometer / ETA / Distance State ──────────────────
+  const [odometerMeters, setOdometerMeters] = useState<number | null>(null);
+  const [etaResult, setEtaResult] = useState<EtaResult | null>(null);
+  const [distanceBetween, setDistanceBetween] = useState<number | null>(null);
+  const [distanceToGeofence, setDistanceToGeofence] = useState<number | null>(
+    null
+  );
+  const [queuedCount, setQueuedCount] = useState<number | null>(null);
+
+  // ── Airplane Mode State ───────────────────────────────
+  const [airplaneModeEnabled, setAirplaneModeEnabled] = useState<
+    boolean | null
+  >(null);
+  const [airplaneModeLogs, setAirplaneModeLogs] = useState<string[]>([]);
 
   // ═══ Effects ═══
 
@@ -265,6 +279,19 @@ export default function App() {
     }
   }, []);
 
+  // Register airplane mode change listener
+  useEffect(() => {
+    setAirplaneModeEnabled(NitroLocation.isAirplaneModeEnabled());
+    NitroLocation.onAirplaneModeChange((isEnabled: boolean) => {
+      const msg = `[${new Date().toLocaleTimeString()}] Airplane mode: ${
+        isEnabled ? 'ON' : 'OFF'
+      }`;
+      console.log('[AirplaneMode]', msg);
+      setAirplaneModeEnabled(isEnabled);
+      setAirplaneModeLogs((prev) => [msg, ...prev].slice(0, 20));
+    });
+  }, []);
+
   // ═══ Handlers ═══
 
   const handleGetCurrentLocation = async () => {
@@ -287,6 +314,64 @@ export default function App() {
     const result = await NitroLocation.forceSync();
     Alert.alert('Sync', result ? 'Sync successful' : 'Sync failed');
   };
+
+  const handleGetQueuedCount = useCallback(() => {
+    const count = NitroLocation.getQueuedCount();
+    setQueuedCount(count);
+  }, []);
+
+  // ── Odometer / ETA / Distance Handlers ───────────────
+
+  const handleGetOdometer = useCallback(() => {
+    setOdometerMeters(NitroLocation.getOdometer());
+  }, []);
+
+  const handleResetOdometer = useCallback(() => {
+    NitroLocation.resetOdometer();
+    setOdometerMeters(0);
+    Alert.alert('Odometer', 'Reset to 0');
+  }, []);
+
+  const handleGetEta = useCallback(() => {
+    // Demo target: Tashkent City landmark (fixed coordinate).
+    const eta = NitroLocation.getEtaTo(41.311081, 69.240562);
+    setEtaResult(eta);
+  }, []);
+
+  // Demo points: Tashkent City center → Tashkent International Airport.
+  const handleGetDistanceBetween = useCallback(() => {
+    const meters = NitroLocation.getDistanceBetween(
+      41.311081,
+      69.240562,
+      41.257651,
+      69.281204
+    );
+    setDistanceBetween(meters);
+  }, []);
+
+  const handleGetDistanceToGeofence = useCallback(() => {
+    const meters = NitroLocation.getDistanceToGeofence('test-zone-1');
+    setDistanceToGeofence(meters);
+  }, []);
+
+  // ── Background reliability (Android OEMs) ────────────
+  const handleCheckBatteryOptimization = useCallback(async () => {
+    const mfr = NitroLocation.getDeviceManufacturer();
+    const exempt = NitroLocation.isIgnoringBatteryOptimizations();
+    if (exempt) {
+      Alert.alert('Battery', `Already exempt (device: ${mfr})`);
+      return;
+    }
+    const nowExempt = await NitroLocation.requestIgnoreBatteryOptimizations();
+    Alert.alert('Battery', nowExempt ? 'Exemption granted' : 'Still optimized');
+  }, []);
+
+  const handleOpenOemAutoStart = useCallback(async () => {
+    const opened = await NitroLocation.openOemAutoStartSettings();
+    if (!opened) {
+      Alert.alert('Auto-start', 'No OEM auto-start screen on this device');
+    }
+  }, []);
 
   const handleShowNotification = () => {
     NitroLocation.showLocalNotification(
@@ -325,6 +410,9 @@ export default function App() {
       radius: 100,
       notifyOnEntry: true,
       notifyOnExit: false,
+      // Fire a 'dwell' event after staying inside for 1 min (demo value).
+      notifyOnDwell: true,
+      loiteringDelayMs: 60000,
     });
 
     setGeofenceAdded(true);
@@ -434,6 +522,14 @@ export default function App() {
     );
   }, []);
 
+  const handleOpenLocationSettings = useCallback(async () => {
+    const enabled = await NitroLocation.openLocationSettings();
+    Alert.alert(
+      'Location Settings',
+      enabled ? '✅ GPS is now enabled' : '❌ GPS is still disabled'
+    );
+  }, []);
+
   const handleCheckPermission = useCallback(() => {
     const status = NitroLocation.getLocationPermissionStatus();
     setPermissionStatus(status);
@@ -539,6 +635,11 @@ export default function App() {
       // false → body carries { latitude, longitude, timestamp } only.
       // true  → also include speed, bearing, accuracy, altitude.
       includeFullPoint: true,
+      // Durable offline queue: persist each fix to native SQLite and drain with
+      // retry/backoff, so fixes survive app kill / reboot and no-connectivity.
+      persistQueue: true,
+      batchSize: 5, // POST up to 5 fixes per request (body becomes a JSON array)
+      batchMaxDelayMs: 3000, // flush a partial batch after 3s
     });
     // Observe each POST outcome. Foreground-only: results that land while the
     // JS thread is suspended (screen off) are dropped, not buffered — so this
@@ -663,6 +764,21 @@ export default function App() {
           />
           <Button title="Remove All" onPress={handleRemoveAllGeofences} />
         </View>
+        <View style={styles.row}>
+          <Button
+            title="Distance to Zone 1"
+            onPress={handleGetDistanceToGeofence}
+            disabled={!geofenceAdded}
+          />
+        </View>
+        {distanceToGeofence !== null && (
+          <Text>
+            Distance to test-zone-1:{' '}
+            {distanceToGeofence < 0
+              ? 'not found'
+              : `${distanceToGeofence.toFixed(0)} m`}
+          </Text>
+        )}
         {geofenceLogs.length > 0 && (
           <View style={styles.logBox}>
             <Text style={styles.logTitle}>Event Log:</Text>
@@ -734,6 +850,74 @@ export default function App() {
         )}
       </Section>
 
+      {/* ── Odometer / ETA / Distance ───────────────────── */}
+      <Section title="🧭 Odometer & ETA">
+        <Text>
+          Odometer:{' '}
+          {odometerMeters !== null
+            ? `${(odometerMeters / 1000).toFixed(2)} km`
+            : '—'}
+        </Text>
+        <View style={styles.row}>
+          <Button title="Get Odometer" onPress={handleGetOdometer} />
+          <Button title="Reset Odometer" onPress={handleResetOdometer} />
+        </View>
+        <Text style={styles.muted}>
+          Persisted across app kill / reboot. Only accumulates while tracking.
+        </Text>
+
+        <Text style={styles.spacedText}>
+          ETA to Tashkent City (demo target):{' '}
+          {etaResult
+            ? etaResult.etaSeconds >= 0
+              ? `${(etaResult.distanceMeters / 1000).toFixed(
+                  1
+                )} km, ~${Math.round(etaResult.etaSeconds / 60)} min`
+              : `${(etaResult.distanceMeters / 1000).toFixed(
+                  1
+                )} km (no ETA — stationary or unknown location)`
+            : '—'}
+        </Text>
+        <View style={styles.row}>
+          <Button title="Get ETA" onPress={handleGetEta} />
+        </View>
+
+        <Text style={styles.spacedText}>
+          City center → Airport distance:{' '}
+          {distanceBetween !== null
+            ? `${(distanceBetween / 1000).toFixed(2)} km`
+            : '—'}
+        </Text>
+        <View style={styles.row}>
+          <Button
+            title="Get Distance Between"
+            onPress={handleGetDistanceBetween}
+          />
+        </View>
+      </Section>
+
+      {/* ── Airplane Mode ───────────────────────────────── */}
+      <Section title="✈️ Airplane Mode">
+        <Text>
+          Status:{' '}
+          {airplaneModeEnabled === null
+            ? 'Checking...'
+            : airplaneModeEnabled
+            ? '🔴 ON'
+            : '🟢 OFF'}
+        </Text>
+        {airplaneModeLogs.length > 0 && (
+          <View style={styles.logBox}>
+            <Text style={styles.logTitle}>Change Log:</Text>
+            {airplaneModeLogs.map((log, i) => (
+              <Text key={i} style={styles.logLine}>
+                {log}
+              </Text>
+            ))}
+          </View>
+        )}
+      </Section>
+
       {/* ── Fake GPS Detection ─────────────────────────── */}
       <Section title="🛡️ Fake GPS Detection">
         <Text style={styles.mono}>
@@ -755,10 +939,16 @@ export default function App() {
 
       {/* ── Location Provider Status ───────────────────── */}
       <Section title="📡 Provider Status">
-        <Button
-          title="Check Location Services"
-          onPress={handleCheckLocationServices}
-        />
+        <View style={styles.row}>
+          <Button
+            title="Check Location Services"
+            onPress={handleCheckLocationServices}
+          />
+          <Button
+            title="Open Location Settings"
+            onPress={handleOpenLocationSettings}
+          />
+        </View>
         {providerStatus && (
           <View style={styles.statsBox}>
             <Text>
@@ -880,6 +1070,13 @@ export default function App() {
             }}
           />
         </View>
+        <View style={styles.row}>
+          <Button
+            title="Battery Exempt?"
+            onPress={handleCheckBatteryOptimization}
+          />
+          <Button title="OEM Auto-start" onPress={handleOpenOemAutoStart} />
+        </View>
       </Section>
 
       {/* ── Open Maps (test background) ────────────────── */}
@@ -921,6 +1118,9 @@ export default function App() {
           />
         </View>
         <Text>Last push result: {lastLivePushResult ?? '—'}</Text>
+        {queuedCount !== null && (
+          <Text>Queued (durable queue): {queuedCount}</Text>
+        )}
         <View style={styles.row}>
           <Button
             title="1. Configure (login / new delivery)"
@@ -928,6 +1128,7 @@ export default function App() {
           />
         </View>
         <View style={styles.row}>
+          <Button title="Queued Count" onPress={handleGetQueuedCount} />
           <Button
             title="3. Clear (logout)"
             onPress={handleClearLivePush}
@@ -1039,5 +1240,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#2196f3',
+  },
+  spacedText: {
+    marginTop: 12,
   },
 });

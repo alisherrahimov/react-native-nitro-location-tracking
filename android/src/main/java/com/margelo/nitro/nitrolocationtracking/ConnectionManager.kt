@@ -74,9 +74,4 @@ class ConnectionManager {
         reconnectAttempts++
         handler.postDelayed({ connect() }, cfg.reconnectIntervalMs.toLong())
     }
-
-    // Location delivery now runs through LivePusher (per-fix native POST that
-    // survives JS suspension). There is no local queue to drain, so forceSync
-    // has nothing to flush — kept for API compatibility, always succeeds.
-    fun flushQueue(): Boolean = true
 }

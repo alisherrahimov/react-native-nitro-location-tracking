@@ -108,9 +108,4 @@ class ConnectionManager: NSObject, URLSessionWebSocketDelegate {
         }
     }
 
-    // Location delivery now runs through LivePusher (per-fix native POST that
-    // survives JS suspension). There is no local queue to drain, so forceSync
-    // has nothing to flush — kept for API compatibility, always succeeds.
-    @discardableResult
-    func flushQueue() -> Bool { true }
 }

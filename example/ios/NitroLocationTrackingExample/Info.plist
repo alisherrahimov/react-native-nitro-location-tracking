@@ -43,6 +43,9 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>We use your location to continue tracking even when the app is in the background.</string>
 
+	<key>NSMotionUsageDescription</key>
+	<string>We use motion activity to save battery by lowering GPS accuracy while you are stationary.</string>
+
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

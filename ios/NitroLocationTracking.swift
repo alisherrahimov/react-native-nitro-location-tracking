@@ -146,8 +146,17 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     // MARK: - Sync Control
 
     func forceSync() throws -> Promise<Bool> {
-        let result = connectionManager.flushQueue()
-        return Promise.resolved(withResult: result)
+        let promise = Promise<Bool>()
+        // The drain is blocking — run it off the calling thread.
+        DispatchQueue.global(qos: .utility).async {
+            let empty = self.livePusher.forceSyncBlocking()
+            promise.resolve(withResult: empty)
+        }
+        return promise
+    }
+
+    func getQueuedCount() throws -> Double {
+        return Double(livePusher.queuedCount())
     }
 
     // MARK: - Fake GPS Detection
@@ -349,6 +358,28 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         // iOS does not provide public broadcasts for Airplane Mode changes
     }
 
+    // MARK: - Background execution / battery optimization
+    // iOS has no Doze / OEM app-killer equivalent, so these are safe no-ops.
+
+    func getDeviceManufacturer() throws -> String {
+        return "apple"
+    }
+
+    func isIgnoringBatteryOptimizations() throws -> Bool {
+        // No battery-optimization gate on iOS — background execution is governed
+        // by the location background mode, which is already handled.
+        return true
+    }
+
+    func requestIgnoreBatteryOptimizations() throws -> Promise<Bool> {
+        return Promise.resolved(withResult: true)
+    }
+
+    func openOemAutoStartSettings() throws -> Promise<Bool> {
+        // Nothing to open on iOS.
+        return Promise.resolved(withResult: false)
+    }
+
     // MARK: - Distance Utilities
 
     func getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double) throws -> Double {
@@ -359,6 +390,31 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 
     func getDistanceToGeofence(regionId: String) throws -> Double {
         return geofenceManager.distanceTo(regionId: regionId, from: locationEngine.lastCLLocation)
+    }
+
+    // MARK: - Odometer
+
+    func getOdometer() throws -> Double {
+        return locationEngine.odometerMeters
+    }
+
+    func resetOdometer() throws {
+        locationEngine.resetOdometer()
+    }
+
+    // MARK: - ETA
+
+    func getEtaTo(latitude: Double, longitude: Double) throws -> EtaResult {
+        guard let last = locationEngine.lastCLLocation else {
+            return EtaResult(distanceMeters: -1, etaSeconds: -1)
+        }
+        let target = CLLocation(latitude: latitude, longitude: longitude)
+        let distance = last.distance(from: target)
+        // CLLocation.speed is m/s (-1 when invalid). Floor at 0.5 m/s so a
+        // stationary / invalid speed yields an "unknown" ETA (-1).
+        let speed = last.speed
+        let eta = speed > 0.5 ? distance / speed : -1
+        return EtaResult(distanceMeters: distance, etaSeconds: eta)
     }
 
     // MARK: - Live Activity

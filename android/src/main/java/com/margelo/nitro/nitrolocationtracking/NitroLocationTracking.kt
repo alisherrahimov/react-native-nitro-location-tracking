@@ -77,6 +77,10 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         mockLocationMonitor = MockLocationMonitor(context)
         airplaneModeMonitor = AirplaneModeMonitor(context)
 
+        // Give the live pusher a Context so it can build its durable SQLite
+        // queue (used only when LivePushConfig.persistQueue is enabled).
+        livePusher.attachContext(context)
+
         // Forward every fix to (1) the built-in live pusher, and (2) the
         // process-wide native listener if the app registered one. Both run on
         // the native thread, so they keep firing while JS is suspended.
@@ -265,8 +269,12 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
 
     override fun forceSync(): Promise<Boolean> {
         return Promise.async {
-            connectionManager.flushQueue()
+            livePusher.forceSyncBlocking()
         }
+    }
+
+    override fun getQueuedCount(): Double {
+        return livePusher.queuedCount().toDouble()
     }
 
     // === Fake GPS Detection ===
@@ -559,6 +567,108 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         }
     }
 
+    // === Background execution / battery optimization ===
+
+    override fun getDeviceManufacturer(): String = OemBatteryHelper.manufacturer()
+
+    override fun isIgnoringBatteryOptimizations(): Boolean {
+        val context = NitroModules.applicationContext ?: return true
+        return OemBatteryHelper.isIgnoringBatteryOptimizations(context)
+    }
+
+    override fun requestIgnoreBatteryOptimizations(): Promise<Boolean> {
+        val context = NitroModules.applicationContext ?: return Promise.async { false }
+        // Already exempt — nothing to prompt.
+        if (OemBatteryHelper.isIgnoringBatteryOptimizations(context)) return Promise.async { true }
+        val intent = OemBatteryHelper.buildIgnoreBatteryOptimizationsIntent(context)
+        return launchSettingsAndResolveOnReturn(context, intent) {
+            OemBatteryHelper.isIgnoringBatteryOptimizations(context)
+        }
+    }
+
+    override fun openOemAutoStartSettings(): Promise<Boolean> {
+        return Promise.async {
+            val context = NitroModules.applicationContext ?: return@async false
+            val intent = OemBatteryHelper.buildAutoStartIntent(context)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to open OEM auto-start settings: ${e.message}")
+                // Last-ditch: the app details page always exists.
+                try {
+                    context.startActivity(
+                        OemBatteryHelper.appDetailsIntent(context)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    true
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to open app details settings: ${e2.message}")
+                    false
+                }
+            }
+        }
+    }
+
+    /**
+     * Launch a settings [intent] and resolve once the user returns to the app,
+     * with the value from [resultOnReturn] (re-checked at that point). Because
+     * battery/OEM settings screens don't return an activity result, we detect the
+     * return via the process lifecycle: we wait for a pause (app backgrounded to
+     * the settings screen) followed by a resume. A 60s timeout is a safety net so
+     * the promise can never hang.
+     */
+    private fun launchSettingsAndResolveOnReturn(
+        context: android.content.Context,
+        intent: android.content.Intent,
+        resultOnReturn: () -> Boolean
+    ): Promise<Boolean> {
+        return Promise.async {
+            suspendCoroutine { cont ->
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                val launched = try {
+                    context.startActivity(intent); true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to launch settings intent: ${e.message}"); false
+                }
+                if (!launched) {
+                    cont.resume(resultOnReturn())
+                    return@suspendCoroutine
+                }
+
+                val resumed = AtomicBoolean(false)
+                fun safeResume() {
+                    if (resumed.compareAndSet(false, true)) cont.resume(resultOnReturn())
+                }
+
+                val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                mainHandler.post {
+                    val lifecycle = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle
+                    var sawPause = false
+                    val observer = object : androidx.lifecycle.DefaultLifecycleObserver {
+                        override fun onPause(owner: androidx.lifecycle.LifecycleOwner) {
+                            sawPause = true
+                        }
+                        override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
+                            // Ignore the immediate onResume fired when we register
+                            // while the app is still foregrounded; only the resume
+                            // AFTER the settings screen paused us counts.
+                            if (!sawPause) return
+                            lifecycle.removeObserver(this)
+                            safeResume()
+                        }
+                    }
+                    lifecycle.addObserver(observer)
+                    mainHandler.postDelayed({
+                        lifecycle.removeObserver(observer)
+                        safeResume()
+                    }, 60_000L)
+                }
+            }
+        }
+    }
+
     // === Device State Monitoring ===
 
     override fun isAirplaneModeEnabled(): Boolean {
@@ -585,7 +695,44 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         return geofenceManager?.distanceTo(regionId, locationEngine?.lastLocation) ?: -1.0
     }
 
-    // === Live Activity (Android no-op — Dynamic Island is iOS-only) ===
+    // === Odometer ===
+
+    override fun getOdometer(): Double {
+        ensureInitialized()
+        return locationEngine?.odometerMeters ?: 0.0
+    }
+
+    override fun resetOdometer() {
+        ensureInitialized()
+        locationEngine?.resetOdometer()
+    }
+
+    // === ETA ===
+
+    override fun getEtaTo(latitude: Double, longitude: Double): EtaResult {
+        ensureInitialized()
+        val last = locationEngine?.lastLocation ?: return EtaResult(-1.0, -1.0)
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(
+            last.latitude, last.longitude, latitude, longitude, results
+        )
+        val distance = results[0].toDouble()
+        // Location.speed is m/s. Floor at 0.5 m/s so a stationary / missing speed
+        // yields an "unknown" ETA (-1) instead of a divide-by-noise value.
+        val speedMps = last.speed.toDouble()
+        val etaSeconds = if (speedMps > 0.5) distance / speedMps else -1.0
+        return EtaResult(distanceMeters = distance, etaSeconds = etaSeconds)
+    }
+
+    // === Live Activity ===
+    // iOS renders a Dynamic Island / Lock Screen activity; Android renders a
+    // rich ongoing "delivery activity" notification from the same call surface.
+    // The last-known delivery details are retained so updateLiveActivity() (which
+    // only carries status fields) can re-render the full card.
+
+    private var activityCustomerName: String = ""
+    private var activityDeliveryAddress: String = ""
+    private var activityOrderCount: Int = 1
 
     override fun startLiveActivity(
         orderId: String,
@@ -596,16 +743,33 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         statusText: String,
         estimatedMinutes: Double,
         distanceMeters: Double
-    ) { /* no-op */ }
+    ) {
+        ensureInitialized()
+        activityCustomerName = customerName
+        activityDeliveryAddress = deliveryAddress
+        activityOrderCount = orderCount.toInt()
+        notificationService?.startDeliveryActivity(
+            customerName, deliveryAddress, activityOrderCount,
+            status, statusText, estimatedMinutes.toInt(), distanceMeters
+        )
+    }
 
     override fun updateLiveActivity(
         status: String,
         statusText: String,
         estimatedMinutes: Double,
         distanceMeters: Double
-    ) { /* no-op */ }
+    ) {
+        ensureInitialized()
+        notificationService?.updateDeliveryActivity(
+            activityCustomerName, activityDeliveryAddress, activityOrderCount,
+            status, statusText, estimatedMinutes.toInt(), distanceMeters
+        )
+    }
 
-    override fun endLiveActivity() { /* no-op */ }
+    override fun endLiveActivity() {
+        notificationService?.endDeliveryActivity()
+    }
 
     // === Notifications ===
 

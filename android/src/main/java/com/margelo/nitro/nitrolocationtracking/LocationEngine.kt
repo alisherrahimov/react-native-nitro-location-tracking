@@ -46,27 +46,69 @@ class LocationEngine(private val context: Context) {
   var lastLocation: Location? = null
     private set
 
+  // Odometer — total meters traveled while tracking, persisted across app
+  // kill / reboot. Stored as raw double bits so large totals keep full precision.
+  private val odometerPrefs =
+    context.getSharedPreferences("nitro_location_odometer", Context.MODE_PRIVATE)
+  var odometerMeters: Double =
+    if (odometerPrefs.contains("meters_bits")) Double.fromBits(odometerPrefs.getLong("meters_bits", 0L))
+    else 0.0
+    private set
+  // Last accepted (post-filter) position used for odometer deltas.
+  private var odometerLastLat: Double? = null
+  private var odometerLastLng: Double? = null
+
+  fun resetOdometer() {
+    odometerMeters = 0.0
+    odometerLastLat = null
+    odometerLastLng = null
+    odometerPrefs.edit().putLong("meters_bits", 0.0.toRawBits()).apply()
+  }
+
+  // Live Kalman smoother — non-null only while kalmanFilter is enabled.
+  private var kalman: LocationKalmanFilter? = null
+
+  // Motion state machine — drives onMotionChange and (when enabled) adaptive accuracy.
+  private val motionManager = MotionActivityManager(context)
+  private var currentConfig: LocationConfig? = null
+  private var isMovingState = false
+  private val mainHandler = android.os.Handler(Looper.getMainLooper())
+  private var stationaryRunnable: Runnable? = null
+
   val isTracking: Boolean get() = tracking
 
   fun start(config: LocationConfig): Boolean {
     if (tracking) {
       removeUpdatesInternal()
     }
-    return if (isGooglePlayServicesAvailable()) {
+    currentConfig = config
+    // (Re)build the Kalman smoother for this session so stale state from a prior
+    // run never produces a spurious first-fix jump.
+    kalman = if (config.kalmanFilter == true) {
+      LocationKalmanFilter(config.kalmanProcessNoiseMps ?: 1.0)
+    } else null
+    val started = if (isGooglePlayServicesAvailable()) {
       startFused(config)
     } else {
       Log.w(TAG, "Google Play Services unavailable — using platform LocationManager fallback")
       startPlatform(config)
     }
+    if (started) startMotionEngine()
+    return started
+  }
+
+  private fun startMotionEngine() {
+    isMovingState = false
+    cancelStationaryTimer()
+    motionManager.onMotionChange = { moving -> onMotionSignal(moving, fromActivityRecognition = true) }
+    // Returns false when ACTIVITY_RECOGNITION is missing / unavailable; in that
+    // case processLocation drives motion from speed instead (see onMotionSignal).
+    motionManager.start()
   }
 
   @SuppressLint("MissingPermission")
   private fun startFused(config: LocationConfig): Boolean {
-    val priority = when (config.desiredAccuracy) {
-      AccuracyLevel.HIGH -> Priority.PRIORITY_HIGH_ACCURACY
-      AccuracyLevel.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
-      AccuracyLevel.LOW -> Priority.PRIORITY_LOW_POWER
-    }
+    val priority = mapPriority(config.desiredAccuracy)
     val request = LocationRequest.Builder(priority, config.intervalMs.toLong())
       .setMinUpdateDistanceMeters(config.distanceFilter.toFloat())
       .setMinUpdateIntervalMillis(config.fastestIntervalMs.toLong())
@@ -184,6 +226,9 @@ class LocationEngine(private val context: Context) {
 
   fun stop() {
     removeUpdatesInternal()
+    motionManager.stop()
+    cancelStationaryTimer()
+    isMovingState = false
     tracking = false
   }
 
@@ -234,10 +279,10 @@ class LocationEngine(private val context: Context) {
 
   private fun processLocation(location: Location) {
     lastLocation = location
-    val data = locationToData(location)
+    val rawData = locationToData(location)
 
     // Check mock location state change and notify
-    val isMock = data.isMockLocation == true
+    val isMock = rawData.isMockLocation == true
     if (isMock != lastMockState) {
       lastMockState = isMock
       Log.d(TAG, "Mock location state changed: $isMock")
@@ -250,6 +295,36 @@ class LocationEngine(private val context: Context) {
       return
     }
 
+    // Accuracy gate: drop low-confidence fixes before anything downstream sees them.
+    val accuracyFilter = currentConfig?.accuracyFilter ?: 0.0
+    if (accuracyFilter > 0 && rawData.accuracy > accuracyFilter) {
+      Log.d(TAG, "Dropping fix — accuracy ${rawData.accuracy}m worse than ${accuracyFilter}m gate")
+      return
+    }
+
+    // Kalman smoothing: replace lat/lng with the filtered estimate (speed/bearing
+    // stay as reported by the chip). Everything downstream uses the filtered data.
+    val data = kalman?.let { k ->
+      val (lat, lng) = k.process(rawData.latitude, rawData.longitude, rawData.accuracy, location.time)
+      rawData.copy(latitude = lat, longitude = lng)
+    } ?: rawData
+
+    // Odometer: accumulate straight-line distance between consecutive accepted
+    // (post-filter) fixes. Ignore GPS jitter (<0.5m) and implausible jumps (>10km).
+    val lastLat = odometerLastLat
+    val lastLng = odometerLastLng
+    if (lastLat != null && lastLng != null) {
+      val results = FloatArray(1)
+      Location.distanceBetween(lastLat, lastLng, data.latitude, data.longitude, results)
+      val delta = results[0]
+      if (delta in 0.5f..10000f) {
+        odometerMeters += delta
+        odometerPrefs.edit().putLong("meters_bits", odometerMeters.toRawBits()).apply()
+      }
+    }
+    odometerLastLat = data.latitude
+    odometerLastLng = data.longitude
+
     onLocation?.invoke(data)
     // Native consumer — fires even when the JS thread is suspended.
     onLocationNative?.invoke(data)
@@ -258,9 +333,82 @@ class LocationEngine(private val context: Context) {
     speedMonitor.feedLocation(data)
     tripCalculator.feedLocation(data)
 
-    val isMoving = location.speed > 0.5f
-    if (isMoving != (lastSpeed > 0.5f)) onMotionChange?.invoke(isMoving)
+    // Motion signal from speed — used only when Activity Recognition isn't the
+    // authoritative source (see onMotionSignal).
+    onMotionSignal(location.speed > 0.5f, fromActivityRecognition = false)
     lastSpeed = location.speed
+  }
+
+  // ── Motion state machine ────────────────────────────────────────────────
+
+  private fun onMotionSignal(moving: Boolean, fromActivityRecognition: Boolean) {
+    // When Activity Recognition is active it is authoritative; ignore the
+    // speed-based fallback so the two sources don't fight.
+    if (!fromActivityRecognition && motionManager.isAvailable) return
+
+    if (moving) {
+      cancelStationaryTimer()
+      if (!isMovingState) setMotionState(true)
+    } else {
+      // Debounce: only declare stationary after stopTimeout of continuous stillness.
+      if (isMovingState && stationaryRunnable == null) scheduleStationary()
+    }
+  }
+
+  private fun scheduleStationary() {
+    cancelStationaryTimer()
+    val minutes = currentConfig?.stopTimeout ?: 5.0
+    val timeoutMs = (minutes * 60_000.0).toLong().coerceAtLeast(0L)
+    val runnable = Runnable {
+      stationaryRunnable = null
+      if (isMovingState) setMotionState(false)
+    }
+    stationaryRunnable = runnable
+    mainHandler.postDelayed(runnable, timeoutMs)
+  }
+
+  private fun cancelStationaryTimer() {
+    stationaryRunnable?.let { mainHandler.removeCallbacks(it) }
+    stationaryRunnable = null
+  }
+
+  private fun setMotionState(moving: Boolean) {
+    isMovingState = moving
+    onMotionChange?.invoke(moving)
+    if (currentConfig?.adaptiveAccuracy == true) applyAdaptiveAccuracy(moving)
+  }
+
+  @SuppressLint("MissingPermission")
+  private fun applyAdaptiveAccuracy(moving: Boolean) {
+    val config = currentConfig ?: return
+    // Adaptive switching only applies to the fused path; the platform-fallback
+    // LocationManager has no cheap way to reconfigure mid-stream.
+    val callback = locationCallback ?: return
+    if (!tracking) return
+
+    val priority = if (moving) mapPriority(config.desiredAccuracy) else Priority.PRIORITY_LOW_POWER
+    val intervalMs = if (moving) config.intervalMs.toLong() else maxOf(config.intervalMs.toLong(), 60_000L)
+    val fastestMs = if (moving) config.fastestIntervalMs.toLong() else intervalMs
+    val distanceM = if (moving) config.distanceFilter.toFloat() else maxOf(config.distanceFilter, 50.0).toFloat()
+
+    val request = LocationRequest.Builder(priority, intervalMs)
+      .setMinUpdateDistanceMeters(distanceM)
+      .setMinUpdateIntervalMillis(fastestMs)
+      .setWaitForAccurateLocation(false)
+      .build()
+    try {
+      // Re-requesting with the same callback replaces the active request.
+      fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+      Log.d(TAG, "Adaptive accuracy → ${if (moving) "moving (configured)" else "stationary (low power)"}")
+    } catch (e: Exception) {
+      Log.w(TAG, "Adaptive accuracy re-request failed: ${e.message}")
+    }
+  }
+
+  private fun mapPriority(level: AccuracyLevel): Int = when (level) {
+    AccuracyLevel.HIGH -> Priority.PRIORITY_HIGH_ACCURACY
+    AccuracyLevel.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+    AccuracyLevel.LOW -> Priority.PRIORITY_LOW_POWER
   }
 
   private fun locationToData(location: Location): LocationData {

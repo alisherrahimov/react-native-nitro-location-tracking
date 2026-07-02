@@ -28,16 +28,51 @@ export interface LocationConfig {
   startOnBoot: boolean; // restart tracking after reboot (Android)
   foregroundNotificationTitle: string;
   foregroundNotificationText: string;
+  /**
+   * Opt-in adaptive accuracy (default: false). When true, the library downgrades
+   * GPS to low power while the device is stationary — as reported by the motion
+   * engine — and restores `desiredAccuracy` when it starts moving again, saving
+   * battery on long idle stretches.
+   *
+   * The motion engine prefers OS activity recognition (ACTIVITY_RECOGNITION on
+   * Android, Motion & Fitness on iOS); if that permission is unavailable it
+   * falls back to speed-based motion detection from the location stream. The
+   * `stopTimeout` value is used as the debounce before declaring the device
+   * stationary.
+   */
+  adaptiveAccuracy?: boolean;
+  /**
+   * Opt-in native Kalman smoothing of the live location stream (default: false).
+   * When true, each fix is run through a position Kalman filter before it reaches
+   * JS / Live Push / trip stats, so GPS jitter (the "dancing" dot while standing
+   * still) and outlier spikes are suppressed. The filter weights each fix by its
+   * reported `accuracy`, so inaccurate fixes move the estimate less.
+   *
+   * NOTE: this changes the emitted `latitude` / `longitude` — they become the
+   * filtered estimate, not the raw chip output.
+   */
+  kalmanFilter?: boolean;
+  /**
+   * Process noise for the Kalman filter, in meters/second (default 1.0). Roughly
+   * "how fast the device is expected to move between fixes" — higher trusts new
+   * fixes more (less smoothing, more responsive), lower trusts the model more
+   * (smoother, laggier). Only used when `kalmanFilter` is true.
+   */
+  kalmanProcessNoiseMps?: number;
+  /**
+   * Drop fixes whose reported horizontal `accuracy` is worse than this many
+   * meters, before they reach JS or any downstream consumer (default 0 =
+   * disabled). A cheap gate that discards low-confidence fixes outright; combine
+   * with `kalmanFilter` for smoothing on top.
+   */
+  accuracyFilter?: number;
 }
 
 export interface ConnectionConfig {
   wsUrl: string;
-  restUrl: string;
   authToken: string;
   reconnectIntervalMs: number;
   maxReconnectAttempts: number;
-  batchSize: number; // locations per batch upload
-  syncIntervalMs: number; // how often to flush queue
 }
 
 /**
@@ -60,18 +95,51 @@ export interface LivePushConfig {
    * true  → also include speed, bearing, accuracy, altitude.
    */
   includeFullPoint: boolean;
+  /**
+   * Opt-in durable offline queue (default: false). When true, every fix is
+   * written to a native SQLite queue and a background drainer POSTs it,
+   * deleting each row only on a 2xx response and retrying with backoff on
+   * failure. The queue survives app kill / reboot, so fixes captured with no
+   * connectivity are delivered later — the production reliability floor.
+   *
+   * When false (default) Live Push stays fire-and-forget: one POST per fix,
+   * dropped on failure. Existing integrations are unaffected.
+   */
+  persistQueue?: boolean;
+  /**
+   * Fixes per POST when draining the durable queue (default: 1). Only applies
+   * when `persistQueue` is true.
+   *
+   * - `1` (or unset): body is a single JSON object, exactly as fire-and-forget.
+   * - `> 1`: body is a JSON **array** of those per-fix objects, cutting request
+   *   volume on metered / cheap data plans. Your endpoint must accept an array.
+   */
+  batchSize?: number;
+  /**
+   * When batching (`batchSize > 1`), flush a partial batch after this many
+   * milliseconds even if it hasn't filled (default: 0 = flush as soon as any
+   * fix is queued). Bounds worst-case delivery latency.
+   */
+  batchMaxDelayMs?: number;
+  /**
+   * Hard cap on queued fixes (default: 10000). When exceeded, the oldest rows
+   * are dropped so the DB can't grow without bound during long outages. Only
+   * applies when `persistQueue` is true.
+   */
+  maxQueueSize?: number;
 }
 
 /**
  * Outcome of a single native Live Push POST, delivered to the
  * `onLivePushResult` callback.
  *
- * IMPORTANT: this only reaches JS while the JS thread is alive (app
- * foregrounded). The POST itself still fires while JS is suspended (screen
- * off / backgrounded / Doze), but results that occur during suspension are
- * dropped — they are NOT buffered. Use this for foreground observability
- * (debug overlay, "last sync OK" indicator, surfacing a 401 to re-auth), not
- * as a guaranteed delivery-confirmation channel.
+ * Results are delivered live while the JS thread is alive (app foregrounded).
+ * Outcomes that occur while JS is suspended (screen off / backgrounded / Doze)
+ * are held in a small native ring buffer and replayed in order the next time a
+ * callback is registered / JS resumes, so a "last sync OK / 401" indicator stays
+ * reliable across suspension. The buffer is bounded (most-recent outcomes win),
+ * so this is foreground observability, not a guaranteed per-fix audit log — for
+ * guaranteed delivery, enable `persistQueue`.
  */
 export interface LivePushResult {
   ok: boolean; // true on a 2xx response
@@ -93,9 +161,20 @@ export interface GeofenceRegion {
   radius: number; // meters
   notifyOnEntry: boolean;
   notifyOnExit: boolean;
+  /**
+   * Fire a `dwell` event when the device stays inside the region for
+   * `loiteringDelayMs` (default false). Useful for "arrived and waiting"
+   * detection (e.g. courier at the pickup point).
+   */
+  notifyOnDwell?: boolean;
+  /**
+   * How long (ms) the device must remain inside before a `dwell` event fires
+   * (default 300000 = 5 min). Only used when `notifyOnDwell` is true.
+   */
+  loiteringDelayMs?: number;
 }
 
-export type GeofenceEvent = 'enter' | 'exit';
+export type GeofenceEvent = 'enter' | 'exit' | 'dwell';
 export type GeofenceCallback = (event: GeofenceEvent, regionId: string) => void;
 
 export interface SpeedConfig {
@@ -116,6 +195,16 @@ export interface TripStats {
   averageSpeedKmh: number; // average speed
   maxSpeedKmh: number; // peak speed recorded
   pointCount: number; // number of location samples
+}
+
+/**
+ * Result of `getEtaTo`. `etaSeconds` is `-1` when an ETA can't be estimated
+ * (no known location, or the device is effectively stationary so speed is
+ * unreliable). `distanceMeters` is `-1` only when there is no known location.
+ */
+export interface EtaResult {
+  distanceMeters: number; // straight-line meters from last known location to target
+  etaSeconds: number; // seconds at current speed, or -1 if not estimable
 }
 
 export type LocationProviderStatus = 'enabled' | 'disabled';
@@ -165,14 +254,23 @@ export interface NitroLocationTracking
   /** Wipe config and disable. Call on logout. */
   clearLivePush(): void;
   /**
-   * Observe the outcome of each native Live Push POST. Fires only while the JS
-   * thread is alive (app foregrounded); results during JS suspension are
-   * dropped, not buffered. See `LivePushResult`.
+   * Observe the outcome of each native Live Push POST. Delivered live while the
+   * JS thread is alive (app foregrounded); outcomes that occur during JS
+   * suspension are held in a bounded native ring buffer and replayed in order
+   * the next time a callback is registered / JS resumes. See `LivePushResult`.
    */
   onLivePushResult(callback: LivePushResultCallback): void;
 
   // === Sync Control ===
+  /**
+   * Drain the durable Live Push queue now (when `persistQueue` is enabled).
+   * Resolves `true` if the queue is empty afterwards (all fixes delivered),
+   * `false` if fixes remain (e.g. still offline). No-op resolving `true` when
+   * the queue is disabled.
+   */
   forceSync(): Promise<boolean>;
+  /** Number of fixes currently waiting in the durable queue (0 when disabled). */
+  getQueuedCount(): number;
 
   // === Fake GPS Detection ===
   isFakeGpsEnabled(): boolean;
@@ -224,6 +322,48 @@ export interface NitroLocationTracking
   isAirplaneModeEnabled(): boolean;
   onAirplaneModeChange(callback: (isEnabled: boolean) => void): void;
 
+  // === Background execution / battery optimization ===
+  // On many Android OEMs (Xiaomi/MIUI, Huawei/EMUI, Oppo/ColorOS, Vivo, Samsung)
+  // the system kills background services unless the app is whitelisted from
+  // battery optimization AND allowed to auto-start. Without this, background
+  // location tracking silently stops. These helpers let you detect and prompt
+  // for the needed exemptions. All are Android-only; iOS has no equivalent and
+  // returns the safe default noted per method.
+
+  /** The device manufacturer, lowercased (e.g. `"xiaomi"`). iOS returns `"apple"`. */
+  getDeviceManufacturer(): string;
+
+  /**
+   * Whether the app is currently exempt from Doze / battery optimization.
+   * Android: reflects `PowerManager.isIgnoringBatteryOptimizations`. iOS: always
+   * `true` (no such restriction).
+   */
+  isIgnoringBatteryOptimizations(): boolean;
+
+  /**
+   * Ask the OS to exempt the app from battery optimization. If the host app
+   * declares the `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission, this shows
+   * the one-tap system dialog; otherwise it opens the battery-optimization
+   * settings list (no special permission required). Resolves with the resulting
+   * `isIgnoringBatteryOptimizations()` state after the user returns. iOS: no-op
+   * that resolves `true`.
+   *
+   * NOTE: Google Play restricts `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to apps
+   * with a qualifying background use case (background location qualifies) and
+   * requires a Play Console declaration. The library does NOT bundle it — add it
+   * to your app manifest if you want the one-tap dialog.
+   */
+  requestIgnoreBatteryOptimizations(): Promise<boolean>;
+
+  /**
+   * Open the OEM-specific auto-start / protected-apps settings screen (Xiaomi,
+   * Huawei, Oppo, Vivo, Samsung, …) so the user can allow the app to run in the
+   * background. Falls back to the app's system details page when no known OEM
+   * screen exists. Resolves `true` if a settings screen was opened. iOS: no-op
+   * that resolves `false`.
+   */
+  openOemAutoStartSettings(): Promise<boolean>;
+
   // === Distance Utilities ===
   getDistanceBetween(
     lat1: number,
@@ -232,6 +372,16 @@ export interface NitroLocationTracking
     lon2: number
   ): number; // meters
   getDistanceToGeofence(regionId: string): number; // meters from last known location to geofence center, -1 if not found
+
+  // === Odometer (persisted across app kill / reboot) ===
+  /** Total meters traveled while tracking. Persisted; survives app kill / reboot. */
+  getOdometer(): number;
+  /** Reset the persisted odometer back to 0. */
+  resetOdometer(): void;
+
+  // === ETA ===
+  /** Straight-line distance + ETA from the last known location to a target coordinate. */
+  getEtaTo(latitude: number, longitude: number): EtaResult;
 
   // === Notifications ===
   showLocalNotification(title: string, body: string): void;
