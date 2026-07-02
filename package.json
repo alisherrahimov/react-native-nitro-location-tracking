@@ -41,7 +41,9 @@
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "test": "jest",
-    "release": "release-it --only-version"
+    "test:cpp": "bash cpp/__tests__/run.sh",
+    "release": "release-it",
+    "release:version-only": "release-it --only-version"
   },
   "keywords": [
     "react-native",
@@ -156,7 +158,8 @@
       "@release-it/conventional-changelog": {
         "preset": {
           "name": "angular"
-        }
+        },
+        "infile": "CHANGELOG.md"
       }
     }
   },

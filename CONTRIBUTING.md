@@ -121,6 +121,13 @@ To publish new versions, run the following:
 yarn release
 ```
 
+This bumps the version, updates `CHANGELOG.md` from conventional commits, creates
+a git tag, pushes it, publishes to npm, and creates a GitHub Release. Creating the
+GitHub Release requires a `GITHUB_TOKEN` env var (a personal access token with
+`repo` scope) to be set before running the command. If you only want to bump the
+version in `package.json` without touching git/npm/GitHub, use
+`yarn release:version-only` instead.
+
 
 ### Scripts
 
