@@ -165,7 +165,14 @@ class NotificationService(private val context: Context) {
             putExtra("title", title)
             putExtra("text", body)
         }
-        context.startService(intent)
+        // Legal while our FGS is alive (the process is exempt from background
+        // start limits then). If the FGS is NOT running and the app is
+        // backgrounded, startService throws IllegalStateException — there is
+        // nothing to update in that case, so swallow instead of crashing.
+        try {
+            context.startService(intent)
+        } catch (_: IllegalStateException) {
+        }
     }
 
     fun startForegroundService(title: String, text: String) {
@@ -174,8 +181,21 @@ class NotificationService(private val context: Context) {
             putExtra("title", title)
             putExtra("text", text)
         }
+        // Prefer plain startService(): it carries NO "must call startForeground
+        // within 10s" watchdog, so a stalled main thread (GC pressure, heavy
+        // navigation transition at journey start) cannot convert into a
+        // ForegroundServiceDidNotStartInTimeException crash — the service still
+        // promotes itself in onCreate, just without a deadline. startService is
+        // only legal while the app is foreground (throws IllegalStateException
+        // from the background on O+); in that case fall back to
+        // startForegroundService, which is exactly the API meant for background
+        // starts and arms the watchdog only on that rare path.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
+            try {
+                context.startService(intent)
+            } catch (_: IllegalStateException) {
+                context.startForegroundService(intent)
+            }
         } else {
             context.startService(intent)
         }
@@ -185,6 +205,14 @@ class NotificationService(private val context: Context) {
         val intent = Intent(context, LocationForegroundService::class.java).apply {
             action = LocationForegroundService.ACTION_STOP
         }
-        context.startService(intent)
+        // Same rationale as updateForegroundNotification: if the FGS is not
+        // running and the app is backgrounded this throws — and a stop of a
+        // non-running service is a no-op anyway. stopService() as fallback is
+        // always legal and covers the started-but-not-yet-foregrounded edge.
+        try {
+            context.startService(intent)
+        } catch (_: IllegalStateException) {
+            context.stopService(Intent(context, LocationForegroundService::class.java))
+        }
     }
 }

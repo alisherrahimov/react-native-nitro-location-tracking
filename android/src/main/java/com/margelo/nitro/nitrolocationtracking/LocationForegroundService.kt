@@ -81,6 +81,30 @@ class LocationForegroundService : Service() {
                 "startForeground failed (${e.javaClass.simpleName}: ${e.message}); " +
                     "stopping service to avoid crash/watchdog kill."
             )
+            // Satisfy the watchdog contract BEFORE stopping. Production crashes
+            // (Android 15/16, Xiaomi + Samsung) show that stopSelf() alone can
+            // still trip ForegroundServiceDidNotStartInTimeException — the
+            // timeout posted by startForegroundService() races service teardown.
+            // A SHORT_SERVICE-typed promotion (API 34+) requires no runtime
+            // permission and no manifest type declaration, so it cannot fail
+            // for the same reason the location-typed one did; it marks the
+            // service as "did start foreground", after which stopping is safe.
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    ServiceCompat.startForeground(
+                        this,
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+                    )
+                } catch (fallbackErr: Exception) {
+                    Log.w(
+                        "LocationFGS",
+                        "shortService fallback promotion also failed: " +
+                            "${fallbackErr.javaClass.simpleName}: ${fallbackErr.message}"
+                    )
+                }
+            }
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }

@@ -63,8 +63,11 @@ Permissions included automatically:
 - `FOREGROUND_SERVICE_LOCATION`
 - `POST_NOTIFICATIONS`
 - `INTERNET`
-- `RECEIVE_BOOT_COMPLETED`
+- `RECEIVE_BOOT_COMPLETED` (re-arm geofences after reboot)
 - `WAKE_LOCK`
+- `ACTIVITY_RECOGNITION` (motion engine for adaptive accuracy; runtime-requestable
+  on Android 10+ — request it yourself, or the library falls back to speed-based
+  motion detection)
 
 ## Usage
 
@@ -130,6 +133,7 @@ const config: LocationConfig = {
   startOnBoot: true, // restart tracking after reboot (Android)
   foregroundNotificationTitle: 'Tracking Active',
   foregroundNotificationText: 'Your location is being tracked',
+  adaptiveAccuracy: false, // opt-in: save battery by downgrading GPS when idle
 };
 
 function DriverScreen() {
@@ -178,9 +182,13 @@ const current = await NitroLocationModule.getCurrentLocation();
 // Check tracking state
 const tracking = NitroLocationModule.isTracking();
 
-// No-op kept for API compatibility — there is no local queue to flush since
-// locations are delivered live via Live Push. Always resolves true.
+// Drain the durable Live Push queue now (when persistQueue is enabled).
+// Resolves true if the queue is empty afterwards (all fixes delivered).
+// When the queue is disabled this is a no-op that resolves true.
 const synced = await NitroLocationModule.forceSync();
+
+// How many fixes are still waiting in the durable queue (0 when disabled).
+const pending = NitroLocationModule.getQueuedCount();
 ```
 
 ### WebSocket Connection
@@ -197,12 +205,9 @@ import type {
 
 const connectionConfig: ConnectionConfig = {
   wsUrl: 'wss://api.example.com/ws/driver',
-  restUrl: 'https://api.example.com/api',
   authToken: 'your-auth-token',
   reconnectIntervalMs: 5000,
   maxReconnectAttempts: 10,
-  batchSize: 5, // reserved — no longer used (local queue removed)
-  syncIntervalMs: 10000, // reserved — no longer used (local queue removed)
 };
 
 function RideScreen() {
@@ -270,6 +275,11 @@ const config: LivePushConfig = {
   // false → body = { latitude, longitude, timestamp, ...extraFields }
   // true  → also include speed, bearing, accuracy, altitude
   includeFullPoint: false,
+  // Opt-in durable offline queue (default false). See "Durable queue" below.
+  persistQueue: true,
+  batchSize: 5, // POST up to 5 fixes per request (body becomes a JSON array)
+  batchMaxDelayMs: 3000, // flush a partial batch after 3s
+  maxQueueSize: 10000, // cap; oldest fixes dropped beyond this
 };
 NitroLocationModule.configureLivePush(config);
 
@@ -289,20 +299,40 @@ NitroLocationModule.onLivePushResult((r) => {
 });
 ```
 
-> **`onLivePushResult` is foreground-only.** The POST keeps firing natively
-> while the JS thread is suspended (screen off / backgrounded / Doze), but the
-> result callback only reaches JS while JS is alive — results that occur during
-> suspension are **dropped, not buffered**. Use it for foreground observability
-> (a "last sync OK" indicator, surfacing a 401 to trigger re-auth), not as a
-> guaranteed delivery-confirmation channel. `statusCode` is the HTTP code (or
-> `0` for a network error / timeout); `error` is `''` on success.
->
-> Live Push is fire-and-forget: there is **no local queue or offline buffer**.
-> If a push fails (e.g. transient network loss), the fix is dropped and the next
-> successful push corrects the server-side position. If you need a durable audit
-> trail, persist the fixes server-side on receipt. The WebSocket connection
-> (`connectWebSocket` / `sendMessage`) remains available for real-time messaging,
-> but it no longer carries an automatic location batch.
+> **`onLivePushResult` outcomes are buffered across suspension.** The POST keeps
+> firing natively while the JS thread is suspended (screen off / backgrounded /
+> Doze). Outcomes that land during suspension are held in a small native ring
+> buffer (most-recent outcomes win) and replayed in order the next time a callback
+> is registered / JS resumes, so a "last sync OK / 401" indicator stays reliable.
+> The buffer is bounded, so this is foreground observability — for guaranteed
+> per-fix delivery, enable `persistQueue`. `statusCode` is the HTTP code (or `0`
+> for a network error / timeout); `error` is `''` on success.
+
+#### Durable queue (`persistQueue`)
+
+By default Live Push is **fire-and-forget**: one POST per fix, dropped on failure,
+and the next successful push corrects the server-side position. That is fine for
+"where is the courier right now" but loses fixes captured with no connectivity.
+
+Set `persistQueue: true` to turn on the **durable offline queue**:
+
+- Every fix is written to a native **SQLite** queue before sending.
+- A background drainer POSTs the oldest fixes first, **deletes a row only on a 2xx**
+  response, and **retries with exponential backoff** (2s → 60s) on network errors
+  or `5xx` / `429`. Non-retryable codes (`400` / `401` / `413`) drop the offending
+  rows so a poison payload can't wedge the queue.
+- The queue **survives app kill / reboot** — fixes recorded offline are delivered
+  when connectivity returns.
+- **Batching:** `batchSize > 1` sends up to N fixes in one request. The body then
+  becomes a **JSON array** of the per-fix objects (your endpoint must accept an
+  array); `batchMaxDelayMs` bounds how long a partial batch waits before flushing.
+- **Back-pressure:** `maxQueueSize` (default 10000) caps the DB; the oldest fixes
+  are dropped beyond it during long outages.
+- Call `forceSync()` to drain on demand (resolves `true` when the queue is empty),
+  and `getQueuedCount()` to read how many fixes are still pending.
+
+> The WebSocket connection (`connectWebSocket` / `sendMessage`) remains available
+> for real-time messaging, independent of Live Push.
 
 ### Fake GPS Detection
 
@@ -325,6 +355,12 @@ NitroLocationModule.onLocation((location) => {
   if (location.isMockLocation) {
     console.warn('This location is from a mock provider');
   }
+});
+
+// Or watch device-level mock location toggle directly — fires independently
+// of tracking, so it works even before startTracking() is called.
+NitroLocationModule.onMockLocationDetected((isMockEnabled) => {
+  console.warn(isMockEnabled ? 'Fake GPS turned ON' : 'Fake GPS turned OFF');
 });
 ```
 
@@ -403,13 +439,15 @@ const smoothed = shortestRotation(currentRotation, targetRotation); // 370 (not 
 
 ### Geofencing
 
-Monitor enter/exit events for circular regions:
+Monitor **enter / exit / dwell** events for circular regions. Registered regions
+are **durable** — they are persisted and re-armed after app kill and device
+reboot, so monitoring keeps working without the app having to re-add them.
 
 ```tsx
 import NitroLocationModule from 'react-native-nitro-location-tracking';
 import type { GeofenceRegion } from 'react-native-nitro-location-tracking';
 
-// Listen for geofence events
+// Listen for geofence events ('enter' | 'exit' | 'dwell')
 NitroLocationModule.onGeofenceEvent((event, regionId) => {
   console.log(`Geofence ${event} for region: ${regionId}`);
 });
@@ -422,6 +460,10 @@ NitroLocationModule.addGeofence({
   radius: 100, // meters
   notifyOnEntry: true,
   notifyOnExit: true,
+  // Optional DWELL: fire once the device has stayed inside for loiteringDelayMs
+  // — e.g. "courier arrived and is waiting at the pickup point".
+  notifyOnDwell: true,
+  loiteringDelayMs: 120000, // 2 minutes (default 5 min)
 });
 
 // Remove a specific geofence
@@ -430,6 +472,20 @@ NitroLocationModule.removeGeofence('pickup-zone');
 // Remove all geofences
 NitroLocationModule.removeAllGeofences();
 ```
+
+**Key points:**
+
+- **Durable across reboot.** On Android the regions are persisted and re-armed by
+  a boot receiver (Google Play Services drops geofences on reboot); geofence
+  transitions are delivered via a manifest receiver, so they survive process
+  death. On iOS, `CLCircularRegion` monitoring is durable natively and the region
+  metadata is restored on relaunch.
+- **DWELL** is native on Android (`GEOFENCE_TRANSITION_DWELL`) and synthesised on
+  iOS with a timer armed on entry and cancelled on exit.
+- Events reach the `onGeofenceEvent` JS callback only while JS is alive. If the
+  app is relaunched cold by a geofence transition, monitoring is restored but that
+  specific in-flight event can't reach JS — surface it with a local notification
+  from your own boot/launch handling if you need it.
 
 > **Note:** iOS limits geofence regions to 20 per app. Android supports up to 100.
 
@@ -475,6 +531,58 @@ if (distToBranch >= 0) {
 - `getDistanceBetween()` is a pure utility — pass any two lat/lng pairs.
 - `getDistanceToGeofence()` uses the device's **last known native location** and the registered geofence center. Returns `-1` if the region ID is not found or no location is available.
 - The `regionId` is the `id` string you set when calling `addGeofence()`.
+
+### Odometer
+
+A persisted running total of distance traveled **while tracking**. It accumulates
+the straight-line distance between consecutive accepted fixes natively, and it
+**survives app kill / reboot** (stored in `SharedPreferences` on Android,
+`UserDefaults` on iOS).
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+const meters = NitroLocationModule.getOdometer(); // total meters since last reset
+console.log(`Odometer: ${(meters / 1000).toFixed(2)} km`);
+
+// e.g. reset at the start of a new shift / trip
+NitroLocationModule.resetOdometer();
+```
+
+**Key points:**
+
+- Only accumulates while tracking is active (fixes are flowing).
+- GPS jitter (< 0.5 m) and implausible jumps (> 10 km between two fixes) are ignored.
+- Rejected mock locations (when `setRejectMockLocations(true)`) are not counted.
+
+### ETA
+
+Straight-line distance and a rough time-to-arrival from the last known location to
+a target coordinate, using the current native speed.
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+const { distanceMeters, etaSeconds } = NitroLocationModule.getEtaTo(
+  41.311081, // target latitude
+  69.240562 // target longitude
+);
+
+if (etaSeconds >= 0) {
+  console.log(`${(distanceMeters / 1000).toFixed(1)} km, ~${Math.round(etaSeconds / 60)} min`);
+} else {
+  // -1: no known location, or the device is effectively stationary so speed is
+  // unreliable — show distance only, or a placeholder.
+  console.log(`${(distanceMeters / 1000).toFixed(1)} km`);
+}
+```
+
+**Key points:**
+
+- `distanceMeters` is straight-line (great-circle), not road distance — pair with a
+  snap-to-road/routing service if you need drive-time accuracy.
+- `etaSeconds` is `-1` when it can't be estimated (no known location, or speed below
+  a 0.5 m/s floor). `distanceMeters` is `-1` only when there is no known location.
 
 ### Speed Monitoring
 
@@ -578,6 +686,53 @@ async function ensureGpsOn() {
 
 - **Android** — Uses `SettingsClient.checkLocationSettings()` + `startResolutionForResult`. Resolves `true` if GPS is already on or if the user accepts the dialog, `false` if the user declines or the dialog cannot be shown.
 - **iOS** — Opens the app's Settings page via `UIApplication.openSettingsURLString` and listens for `UIApplication.didBecomeActiveNotification` to detect the return to foreground. Resolves `true` if `CLLocationManager.locationServicesEnabled()` is on after the user returns, `false` otherwise.
+
+### Background reliability on Android OEMs
+
+On many Android skins — Xiaomi/MIUI, Huawei/EMUI, Honor, Oppo·Realme/ColorOS,
+Vivo, Samsung, OnePlus — the system aggressively kills background services unless
+the app is **exempt from battery optimization** and **allowed to auto-start**.
+Without this, background location tracking silently stops after a while, even
+with a foreground service. These helpers let you detect the state and prompt the
+user to fix it. **All are Android-only; iOS returns the safe defaults noted below.**
+
+```tsx
+import NitroLocationModule from 'react-native-nitro-location-tracking';
+
+async function ensureBackgroundReliable() {
+  // 1. Battery optimization (stock Android / Doze).
+  if (!NitroLocationModule.isIgnoringBatteryOptimizations()) {
+    await NitroLocationModule.requestIgnoreBatteryOptimizations();
+  }
+
+  // 2. OEM auto-start / "protected apps" — only worth prompting on known OEMs.
+  const oem = NitroLocationModule.getDeviceManufacturer();
+  if (['xiaomi', 'redmi', 'poco', 'huawei', 'honor', 'oppo', 'realme', 'vivo']
+        .some((m) => oem.includes(m))) {
+    await NitroLocationModule.openOemAutoStartSettings();
+  }
+}
+```
+
+**Behavior & platform notes:**
+
+- `getDeviceManufacturer()` — lowercased `Build.MANUFACTURER` (e.g. `"xiaomi"`); `"apple"` on iOS.
+- `isIgnoringBatteryOptimizations()` — reflects `PowerManager.isIgnoringBatteryOptimizations`; always `true` on iOS.
+- `requestIgnoreBatteryOptimizations()` — resolves with the resulting state **after the user returns**. If your app declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, it shows the one-tap system dialog; otherwise it opens the battery-optimization settings list. iOS resolves `true`.
+- `openOemAutoStartSettings()` — opens the vendor auto-start screen (best-effort; OEM Activities are undocumented and vary by version), falling back to the app's details page. Resolves `true` if a screen opened; iOS resolves `false`.
+
+> **One-tap battery dialog (optional).** Google Play restricts
+> `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to apps with a qualifying background use
+> case (background location qualifies) and requires a Play Console declaration.
+> The library does **not** bundle this permission — add it to your app's manifest
+> if you want the one-tap dialog. Without it, `requestIgnoreBatteryOptimizations()`
+> still works by opening the settings list.
+
+```xml
+<!-- Optional: enables the one-tap battery-exemption dialog. Requires a Play
+     Console declaration. Omit to use the settings-list fallback. -->
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+```
 
 ### Permission Status
 
@@ -693,9 +848,61 @@ NitroLocationModule.onPermissionStatusChange((status) => {
 | iOS      | `locationManagerDidChangeAuthorization` delegate | Immediately when the user changes permission (system dialog, Settings, MDM) |
 | Android  | `ProcessLifecycleOwner` lifecycle observer | When the app returns to foreground after the user changes permission in Settings |
 
-### Live Activity (iOS Dynamic Island & Lock Screen)
+### Snap to road (pluggable)
 
-Show a live delivery card on the iOS Lock Screen and Dynamic Island that updates in real time as the order progresses. Android calls are safe no-ops.
+For cleaner trip polylines, snap raw GPS fixes to the road network. The library
+**bundles no map vendor** — you implement `SnapToRoadProvider` around whatever
+service you use (Google Roads API, Mapbox Map Matching, Valhalla, OSRM, …) and
+feed fixes through `SnapToRoad`, which buffers them, batches provider calls, and
+falls back to raw points if the provider errors.
+
+```tsx
+import NitroLocationModule, {
+  SnapToRoad,
+  type SnapToRoadProvider,
+  type SnapPoint,
+} from 'react-native-nitro-location-tracking';
+
+// 1. Wrap your roads service.
+const googleRoads: SnapToRoadProvider = {
+  async snap(points: SnapPoint[]) {
+    const path = points.map((p) => `${p.latitude},${p.longitude}`).join('|');
+    const res = await fetch(
+      `https://roads.googleapis.com/v1/snapToRoads?interpolate=true&path=${path}&key=YOUR_KEY`
+    );
+    const json = await res.json();
+    return (json.snappedPoints ?? []).map((sp: any) => ({
+      latitude: sp.location.latitude,
+      longitude: sp.location.longitude,
+    }));
+  },
+};
+
+// 2. Buffer fixes as they arrive.
+const snapper = new SnapToRoad(googleRoads, { minDistanceMeters: 5 });
+NitroLocationModule.onLocation((loc) => snapper.add(loc));
+
+// 3. Snap when you need the polyline (clears the buffer).
+const polyline = await snapper.flush();
+```
+
+- `batchSize` (default 100) splits large buffers into sequential provider calls.
+- `minDistanceMeters` thins dense/duplicate fixes before snapping.
+- A failed or empty provider response falls back to that batch's raw points, so
+  the returned line is always continuous.
+
+### Live Activity (iOS Dynamic Island & Lock Screen · Android ongoing card)
+
+Show a live delivery card that updates in real time as the order progresses. One
+JS integration drives both platforms:
+
+- **iOS** — a Live Activity on the Lock Screen and Dynamic Island (16.2+).
+- **Android** — a rich **ongoing notification** ("delivery activity" card) showing
+  the same status, ETA, distance, and address. No longer a no-op; requires the
+  `POST_NOTIFICATIONS` permission (already declared by the library) to be granted.
+
+The status string maps to an emoji on both platforms (`picking_up` 📦, `on_the_way`
+🚗, `arriving` 🏁, `delivered` ✅).
 
 #### iOS Prerequisites (one-time setup)
 
@@ -836,20 +1043,87 @@ interface LocationConfig {
   startOnBoot: boolean; // restart tracking after reboot (Android)
   foregroundNotificationTitle: string;
   foregroundNotificationText: string;
+  adaptiveAccuracy?: boolean; // opt-in: downgrade GPS when stationary (default false)
+  kalmanFilter?: boolean; // opt-in: smooth the live stream (default false)
+  kalmanProcessNoiseMps?: number; // Kalman process noise in m/s (default 1.0)
+  accuracyFilter?: number; // drop fixes worse than N meters (default 0 = off)
 }
 ```
+
+### Adaptive accuracy & the motion engine
+
+`onMotionChange(callback)` reports whether the device is **moving** or
+**stationary**. It is backed by a motion state machine, not a raw speed check.
+
+**How motion is detected (with graceful fallback):**
+
+1. **OS activity recognition** (preferred) — Activity Recognition on Android,
+   Core Motion "Motion & Fitness" on iOS. This is what lets the library know the
+   device is parked even when GPS still reports small jitter.
+2. **Speed-based fallback** — if the activity permission is missing or
+   unavailable, motion is inferred from the location stream's speed. No extra
+   permission required; slightly less precise.
+
+Transitions are **debounced** by `stopTimeout` (minutes): the device must be
+continuously still for that long before it is declared stationary, which avoids
+flapping at traffic lights.
+
+**Adaptive accuracy** (`adaptiveAccuracy: true`, default `false`): when the motion
+engine reports stationary, the library drops GPS to low power (longer interval,
+larger distance filter / coarser accuracy) and restores your configured
+`desiredAccuracy` the moment it starts moving again — saving battery on long idle
+stretches. It's opt-in so existing integrations keep their current behavior.
+
+**Permissions required for OS activity recognition:**
+
+| Platform | Requirement |
+| -------- | ----------- |
+| Android  | `ACTIVITY_RECOGNITION` (added by the library's manifest; **runtime-requestable on API 29+** — request it in your app, or the engine silently uses the speed fallback) |
+| iOS      | `NSMotionUsageDescription` in your app's `Info.plist` (or the engine uses the speed fallback) |
+
+> Without these, tracking and `onMotionChange` still work — they just fall back to
+> speed-based motion detection. Adaptive accuracy still functions on top of
+> whichever motion source is active.
+
+### Live location filtering (Kalman + accuracy gate)
+
+Raw GPS is noisy: the position "dances" a few meters while you stand still, and
+occasionally spikes far away near buildings/tunnels. Two opt-in, native filters
+clean the **live stream** before it reaches JS, Live Push, or trip stats — no
+post-processing needed.
+
+```tsx
+NitroLocationModule.configure({
+  // ...other config
+  accuracyFilter: 50, // drop fixes reporting worse than 50 m accuracy
+  kalmanFilter: true, // smooth the survivors
+  kalmanProcessNoiseMps: 1.0, // ~walking/driving; higher = less smoothing
+});
+```
+
+- **`accuracyFilter`** (meters, default `0` = off) — a cheap gate that discards
+  low-confidence fixes outright before anything downstream sees them.
+- **`kalmanFilter`** (default `false`) — runs each surviving fix through a
+  position **Kalman filter** that weights it by its reported accuracy, so jitter
+  is smoothed and outlier spikes are dampened. **This changes the emitted
+  `latitude`/`longitude`** — they become the filtered estimate, not the raw chip
+  output. Speed and bearing are left as reported.
+- **`kalmanProcessNoiseMps`** (m/s, default `1.0`) — tuning knob: higher trusts
+  new fixes more (more responsive, less smoothing), lower trusts the motion model
+  more (smoother, laggier).
+
+The filter is rebuilt each time tracking starts, so it never carries stale state
+into a new session. The odometer, speed monitor, and trip calculator all consume
+the filtered stream when these are enabled.
 
 #### `ConnectionConfig`
 
 ```ts
 interface ConnectionConfig {
   wsUrl: string;
-  restUrl: string;
   authToken: string;
   reconnectIntervalMs: number;
   maxReconnectAttempts: number;
-  batchSize: number; // reserved — no longer used (local queue removed)
-  syncIntervalMs: number; // reserved — no longer used (local queue removed)
 }
 ```
 
@@ -866,6 +1140,14 @@ interface LivePushConfig {
   // false → body carries { latitude, longitude, timestamp } only.
   // true  → also include speed, bearing, accuracy, altitude.
   includeFullPoint: boolean;
+  // Opt-in durable offline queue (default false). See "Durable queue" above.
+  persistQueue?: boolean;
+  // Fixes per POST when draining the queue (default 1). >1 → body is a JSON array.
+  batchSize?: number;
+  // Flush a partial batch after this many ms (default 0 = flush immediately).
+  batchMaxDelayMs?: number;
+  // Cap on queued fixes (default 10000); oldest dropped beyond this.
+  maxQueueSize?: number;
 }
 ```
 
@@ -889,7 +1171,11 @@ interface GeofenceRegion {
   radius: number; // meters
   notifyOnEntry: boolean;
   notifyOnExit: boolean;
+  notifyOnDwell?: boolean; // fire 'dwell' after loiteringDelayMs inside (default false)
+  loiteringDelayMs?: number; // dwell delay in ms (default 300000 = 5 min)
 }
+
+// type GeofenceEvent = 'enter' | 'exit' | 'dwell'
 ```
 
 #### `SpeedConfig`
@@ -945,19 +1231,24 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | `getConnectionState()`                       | `ConnectionState`           | Get current connection state                                                             |
 | `onConnectionStateChange(callback)`          | `void`                      | Register connection state callback                                                       |
 | `onMessage(callback)`                        | `void`                      | Register incoming message callback                                                       |
-| `forceSync()`                                | `Promise<boolean>`          | No-op kept for API compatibility (local queue removed; use Live Push). Always resolves `true` |
+| `forceSync()`                                | `Promise<boolean>`          | Drain the durable Live Push queue now; resolves `true` when empty (no-op resolving `true` when the queue is disabled) |
+| `getQueuedCount()`                           | `number`                    | Fixes currently waiting in the durable Live Push queue (`0` when disabled)                |
 | `configureLivePush(config)`                  | `void`                      | Set the native live-push endpoint, token, and body fields (call on login / token refresh / new delivery) |
 | `setLivePushEnabled(enabled)`                | `void`                      | Cheap runtime on/off for live push without losing config (call on duty/online state changes) |
 | `clearLivePush()`                            | `void`                      | Wipe live-push config and disable it (call on logout)                                    |
-| `onLivePushResult(callback)`                 | `void`                      | Observe each live-push POST outcome (`LivePushResult`). Foreground-only — results during JS suspension are dropped, not buffered |
+| `onLivePushResult(callback)`                 | `void`                      | Observe each live-push POST outcome (`LivePushResult`). Buffered across JS suspension — see callout above |
 | `isFakeGpsEnabled()`                         | `boolean`                   | Check if device-level mock location is enabled                                           |
 | `setRejectMockLocations(reject)`             | `void`                      | Auto-reject mock locations when `true`                                                   |
+| `onMockLocationDetected(callback)`           | `void`                      | Register a callback that fires when device-level mock location is toggled on/off         |
 | `addGeofence(region)`                        | `void`                      | Start monitoring a circular geofence region                                              |
 | `removeGeofence(regionId)`                   | `void`                      | Stop monitoring a specific geofence                                                      |
 | `removeAllGeofences()`                       | `void`                      | Remove all active geofences                                                              |
 | `onGeofenceEvent(callback)`                  | `void`                      | Register geofence enter/exit callback                                                    |
 | `getDistanceBetween(lat1, lon1, lat2, lon2)` | `number`                    | Calculate distance between two points in meters (native Haversine)                       |
 | `getDistanceToGeofence(regionId)`            | `number`                    | Get distance in meters from last known location to a geofence center (`-1` if not found) |
+| `getOdometer()`                              | `number`                    | Total meters traveled while tracking; persisted across app kill / reboot                 |
+| `resetOdometer()`                            | `void`                      | Reset the persisted odometer to 0                                                         |
+| `getEtaTo(latitude, longitude)`              | `EtaResult`                 | Straight-line distance + ETA (seconds) from last known location to a target (`-1` fields when not estimable) |
 | `configureSpeedMonitor(config)`              | `void`                      | Set speed monitoring thresholds                                                          |
 | `onSpeedAlert(callback)`                     | `void`                      | Register speed state-transition callback                                                 |
 | `getCurrentSpeed()`                          | `number`                    | Get current speed in km/h                                                                |
@@ -970,10 +1261,14 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | `onProviderStatusChange(callback)`           | `void`                      | Register GPS/network provider status callback                                            |
 | `isAirplaneModeEnabled()`                    | `boolean`                   | Check if Airplane mode is active on Android                                              |
 | `onAirplaneModeChange(callback)`             | `void`                      | Register Airplane mode state-transition callback                                         |
+| `getDeviceManufacturer()`                    | `string`                    | Lowercased device manufacturer (e.g. `"xiaomi"`); `"apple"` on iOS                       |
+| `isIgnoringBatteryOptimizations()`           | `boolean`                   | Android: is the app exempt from Doze battery optimization? iOS: always `true`            |
+| `requestIgnoreBatteryOptimizations()`        | `Promise<boolean>`          | Prompt for battery-optimization exemption; resolves resulting state (iOS resolves `true`) |
+| `openOemAutoStartSettings()`                 | `Promise<boolean>`          | Open the OEM auto-start / protected-apps screen; resolves `true` if opened (iOS `false`) |
 | `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
 | `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
 | `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
-| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | Start a Live Activity on the Lock Screen / Dynamic Island (iOS 16.2+ only; no-op on Android) |
+| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | Start a live delivery card — Lock Screen / Dynamic Island (iOS 16.2+) or an ongoing notification (Android) |
 | `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | Push a state update to the running Live Activity |
 | `endLiveActivity()`                          | `void`                      | End and dismiss the Live Activity immediately                                            |
 | `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
@@ -1010,84 +1305,6 @@ const stats = NitroLocationCalculations.calculateTotalTripStats(points);
 | `calculateBearing(lat1, lon1, lat2, lon2)` | `number` | Lightning fast C++ trigonometric bearing computation for raw coordinates. |
 | `encodeGeohash(lat, lon, precision)` | `string` | Converts coordinates into a Geohash string instantly representing geological boundaries. |
 
-## Publishing to npm
-
-### Prerequisites
-
-1. Create an npm account at [npmjs.com](https://www.npmjs.com/signup)
-2. Log in from terminal:
-
-```sh
-npm login
-```
-
-### First-time Publish
-
-1. Make sure the build is up to date:
-
-```sh
-yarn prepare
-```
-
-1. Do a dry run to verify what will be published:
-
-```sh
-npm pack --dry-run
-```
-
-1. Publish:
-
-```sh
-npm publish
-```
-
-> The package is configured with `"publishConfig": { "registry": "https://registry.npmjs.org/" }` so it will publish to the public npm registry.
-
-### Release with Versioning (Recommended)
-
-This project uses [release-it](https://github.com/release-it/release-it) with conventional changelog. To create a proper release:
-
-```sh
-yarn release
-```
-
-This will:
-
-- Bump the version based on your commits
-- Generate a changelog
-- Create a git commit and tag
-- Publish to npm
-- Create a GitHub release
-
-For a specific version bump:
-
-```sh
-# Patch release (0.1.5 -> 0.1.6)
-npx release-it patch
-
-# Minor release (0.1.5 -> 0.2.0)
-npx release-it minor
-
-# Major release (0.1.5 -> 1.0.0)
-npx release-it major
-```
-
-### Manual Version Bump + Publish
-
-```sh
-# 1. Bump version
-npm version patch  # or minor / major
-
-# 2. Build
-yarn prepare
-
-# 3. Publish
-npm publish
-
-# 4. Push tags
-git push --follow-tags
-```
-
 ### What Gets Published
 
 The `files` field in `package.json` controls what is included in the npm package:
@@ -1102,16 +1319,6 @@ The `files` field in `package.json` controls what is included in the npm package
 - `*.podspec` - CocoaPods spec
 - `react-native.config.js` - React Native CLI config
 
-### Unpublishing / Deprecating
-
-```sh
-# Deprecate a version (users see a warning on install)
-npm deprecate react-native-nitro-location-tracking@"< 0.2.0" "please upgrade to 0.2.0+"
-
-# Unpublish a specific version (within 72 hours only)
-npm unpublish react-native-nitro-location-tracking@0.1.0
-```
-
 ## Contributing
 
 - [Development workflow](CONTRIBUTING.md#development-workflow)
@@ -1125,3 +1332,11 @@ MIT
 ---
 
 Made with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)
+
+---
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/alilion" target="_blank">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60" width="217">
+  </a>
+</p>
