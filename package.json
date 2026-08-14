@@ -39,11 +39,13 @@
     "prepare": "bob build",
     "nitrogen": "nitrogen",
     "typecheck": "tsc",
-    "lint": "eslint \"**/*.{js,ts,tsx}\"",
+    "lint": "eslint \"**/*.{js,ts,tsx}\" --ignore-pattern \"docs/**\"",
     "test": "jest",
     "test:cpp": "bash cpp/__tests__/run.sh",
     "release": "release-it",
-    "release:version-only": "release-it --only-version"
+    "release:version-only": "release-it --only-version",
+    "docs": "npm --prefix docs run start",
+    "docs:build": "npm --prefix docs run build"
   },
   "keywords": [
     "react-native",

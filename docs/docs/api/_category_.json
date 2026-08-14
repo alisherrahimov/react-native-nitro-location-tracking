@@ -1,0 +1,8 @@
+{
+  "label": "API Reference",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "Full type and method reference for react-native-nitro-location-tracking."
+  }
+}

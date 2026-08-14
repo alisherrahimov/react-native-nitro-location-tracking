@@ -1,0 +1,87 @@
+/**
+ * CSS files with the .module.css suffix will be treated as CSS modules
+ * and scoped locally.
+ */
+
+.heroBanner {
+  padding: 6rem 1rem 5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background: var(--brand-gradient);
+}
+
+.heroBanner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+      circle at 15% 20%,
+      rgba(255, 255, 255, 0.14) 0,
+      transparent 40%
+    ),
+    radial-gradient(circle at 85% 80%, rgba(255, 255, 255, 0.12) 0, transparent 45%);
+  pointer-events: none;
+}
+
+.heroBanner :global(.hero__title) {
+  font-size: 3rem;
+  letter-spacing: -0.02em;
+}
+
+.heroBanner :global(.hero__subtitle) {
+  max-width: 42rem;
+  margin: 0 auto;
+  opacity: 0.92;
+  font-size: 1.2rem;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 3.5rem 1.5rem;
+  }
+
+  .heroBanner :global(.hero__title) {
+    font-size: 2.2rem;
+  }
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.buttons :global(.button--secondary) {
+  color: var(--ifm-color-primary-darkest);
+}
+
+.buttons :global(.button--outline) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.buttons :global(.button--outline:hover) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.installCommand {
+  display: inline-block;
+  margin: 1.75rem auto 0;
+  padding: 0.65rem 1.25rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.installCommand code {
+  background: transparent;
+  color: #fff;
+  padding: 0;
+}

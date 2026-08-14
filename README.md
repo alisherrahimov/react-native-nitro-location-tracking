@@ -2,6 +2,8 @@
 
 A high-performance React Native location tracking library built with [Nitro Modules](https://nitro.margelo.com/). Designed for ride-hailing, delivery, and fleet tracking apps with background location, WebSocket connectivity, foreground service notifications, and smooth map marker animations.
 
+📖 **[Full documentation site](https://alisherrahimov.github.io/react-native-nitro-location-tracking/)**
+
 ## Features
 
 - **Background location tracking** with foreground service (Android) and background modes (iOS)

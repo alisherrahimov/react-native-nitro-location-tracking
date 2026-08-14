@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="favGrad" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1" />
+      <stop offset="1" stop-color="#22d3ee" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M32 4C20.954 4 12 12.954 12 24c0 15 20 36 20 36s20-21 20-36C52 12.954 43.046 4 32 4Z"
+    fill="url(#favGrad)"
+  />
+  <circle cx="32" cy="24" r="9" fill="white" />
+</svg>
