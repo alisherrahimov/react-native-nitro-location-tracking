@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.1.30 (2026-08-14)
+
+### Bug Fixes
+
+* **android:** stop `ForegroundServiceDidNotStartInTimeException` crashes in `LocationForegroundService` ([88d5cbf](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/88d5cbf6fe82ee3aa0df8444d61e3c90b35f14c3))
+
+  Three independent paths reached the watchdog. The promotion notification was
+  built *before* the `startForeground` try block, and `PendingIntent.getActivity()`
+  throws on the `null` that `getLaunchIntentForPackage()` returns while a package
+  is being replaced — so an app update could throw straight out of `onCreate`
+  with the service never promoted. Promotion now uses a notification that cannot
+  throw (static strings, no `PendingIntent`, no `PackageManager`); the full
+  notification with a tap target is applied afterwards, with its launch intent
+  null-checked.
+
+  The `SHORT_SERVICE` fallback added in 0.1.29 could never run: API 34+ rejects
+  any type not declared in the manifest, and only `location` was declared, so the
+  fallback threw and the watchdog stayed armed. The service now declares
+  `location|shortService`.
+
+  `onTimeout(startId)` is implemented, required by the `SHORT_SERVICE` contract
+  now that the fallback can actually take effect.
+
+* **android:** return `START_NOT_STICKY` from `LocationForegroundService` ([88d5cbf](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/88d5cbf6fe82ee3aa0df8444d61e3c90b35f14c3))
+
+  A system-initiated restart lands while the app is in the background, where
+  Android 12+ forbids promoting a `location`-typed foreground service — the
+  promotion failed, the watchdog fired, and the process crashed, repeatedly.
+
+  **Behaviour change:** tracking no longer revives itself after a process kill.
+  Apps that relied on the sticky restart must call `startTracking()` again when
+  the app returns to the foreground and the location permission is granted.
+
+### Features
+
+* add network monitoring for cellular generation and transport changes ([88d5cbf](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/88d5cbf6fe82ee3aa0df8444d61e3c90b35f14c3))
+
+  New `startNetworkMonitoring()`, `stopNetworkMonitoring()`, `getNetworkStatus()`
+  and `onNetworkChange()` on both platforms, reporting transport, cellular
+  generation, radio technology, and the expensive/constrained flags. Adds the
+  `ACCESS_NETWORK_STATE` permission on Android.
+
+## 0.1.29 (2026-08-12)
+
+> Released to npm and tagged without a changelog entry; reconstructed here from
+> the commit range `v0.1.28..v0.1.29`.
+
+### Bug Fixes
+
+* **cpp:** avoid signed/unsigned comparison in the geohash precision loop ([e8de625](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/e8de625))
+
+### Features
+
+* wire up odometer, ETA, adaptive accuracy, Kalman filtering, durable Live Push queue, geofence dwell/persistence, OEM battery whitelisting, and airplane-mode APIs ([44559dd](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/44559dd))
+* **android:** enhance foreground service handling and notification updates ([953d5fa](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/953d5fa))
+* **android:** add OEM battery optimization and auto-start whitelisting ([4bf06b1](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/4bf06b1))
+* **android:** persist geofences and re-arm monitoring across reboot ([e43bc43](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/e43bc43))
+* **android,ios:** add durable SQLite-backed offline queue for Live Push ([f1767d2](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/f1767d2))
+* **android,ios:** add native Kalman filter for live location smoothing ([d007264](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/d007264))
+* **android,ios:** add motion-activity state machine ([0c4ce1c](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/0c4ce1c))
+* add pluggable snap-to-road buffering hook ([ae5902b](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/ae5902b))
+
 ## 0.1.28 (2026-07-02)
 
 > Baseline entry. Versions 0.1.0–0.1.28 were published to npm without git tags,
