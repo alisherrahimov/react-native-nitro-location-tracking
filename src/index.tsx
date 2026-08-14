@@ -36,6 +36,7 @@ export type {
   SnapToRoadProvider,
 } from './SnapToRoad';
 export type {
+  CellularGeneration,
   ConnectionConfig,
   ConnectionState,
   ConnectionStateCallback,
@@ -51,6 +52,9 @@ export type {
   LocationProviderStatus,
   MessageCallback,
   MockLocationCallback,
+  NetworkChangeCallback,
+  NetworkStatus,
+  NetworkTransport,
   NitroLocationTracking,
   PermissionStatus,
   PermissionStatusCallback,

@@ -20,8 +20,9 @@ Pod::Spec.new do |s|
   ]
   s.exclude_files = "ios/widget/**/*"
 
-  # CoreLocation for GPS; CoreMotion for the adaptive-accuracy motion engine.
-  s.frameworks = "CoreLocation", "CoreMotion"
+  # CoreLocation for GPS; CoreMotion for the adaptive-accuracy motion engine;
+  # CoreTelephony + Network for cellular-generation/transport change events.
+  s.frameworks = "CoreLocation", "CoreMotion", "CoreTelephony", "Network"
   # System SQLite for the durable Live Push offline queue.
   s.library = "sqlite3"
 

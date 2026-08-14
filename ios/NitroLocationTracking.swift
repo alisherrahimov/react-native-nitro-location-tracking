@@ -18,6 +18,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private let notificationService = NotificationService()
     private let geofenceManager = GeofenceManager()
     private let mockLocationMonitor = MockLocationMonitor()
+    private let networkInfoMonitor = NetworkInfoMonitor()
 
     private var locationCallback: ((LocationData) -> Void)?
     private var motionCallback: ((Bool) -> Void)?
@@ -28,6 +29,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
     private var providerStatusCallback: ((LocationProviderStatus, LocationProviderStatus) -> Void)?
     private var permissionStatusCallback: ((PermissionStatus) -> Void)?
     private var mockLocationCallback: ((Bool) -> Void)?
+    private var networkChangeCallback: ((NetworkStatus) -> Void)?
     private var permissionPromise: Promise<PermissionStatus>?
 
     override init() {
@@ -358,6 +360,27 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         // iOS does not provide public broadcasts for Airplane Mode changes
     }
 
+    // MARK: - Network Info (cellular generation / transport change events)
+
+    func startNetworkMonitoring() throws {
+        networkInfoMonitor.onChange = { [weak self] status in
+            self?.networkChangeCallback?(status)
+        }
+        networkInfoMonitor.start()
+    }
+
+    func stopNetworkMonitoring() throws {
+        networkInfoMonitor.stop()
+    }
+
+    func getNetworkStatus() throws -> NetworkStatus {
+        return networkInfoMonitor.currentStatus()
+    }
+
+    func onNetworkChange(callback: @escaping (_ status: NetworkStatus) -> Void) throws {
+        networkChangeCallback = callback
+    }
+
     // MARK: - Background execution / battery optimization
     // iOS has no Doze / OEM app-killer equivalent, so these are safe no-ops.
 
@@ -488,5 +511,6 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         connectionManager.disconnect()
         geofenceManager.destroy()
         mockLocationMonitor.destroy()
+        networkInfoMonitor.stop()
     }
 }

@@ -217,6 +217,20 @@ export default function App() {
     setCurrentSpeed(location.speed * 3.6);
   }, [location]);
 
+  // network checking
+
+  useEffect(() => {
+    console.log(NitroLocation.getNetworkStatus(), ' initial network status');
+    NitroLocation.startNetworkMonitoring();
+    NitroLocation.onNetworkChange((value) => {
+      console.log(value, ' network status changed');
+    });
+
+    return () => {
+      NitroLocation.stopNetworkMonitoring();
+    };
+  }, []);
+
   // Handle incoming messages
   useEffect(() => {
     if (!lastMessage) return;

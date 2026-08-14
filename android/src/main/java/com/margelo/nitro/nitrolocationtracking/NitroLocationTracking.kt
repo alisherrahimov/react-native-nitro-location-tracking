@@ -47,6 +47,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var permissionStatusMonitor: PermissionStatusMonitor? = null
     private var mockLocationMonitor: MockLocationMonitor? = null
     private var airplaneModeMonitor: AirplaneModeMonitor? = null
+    private var networkInfoMonitor: NetworkInfoMonitor? = null
 
     private var locationCallback: ((LocationData) -> Unit)? = null
     private var motionCallback: ((Boolean) -> Unit)? = null
@@ -58,6 +59,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
     private var permissionStatusCallback: ((PermissionStatus) -> Unit)? = null
     private var mockLocationCallback: ((Boolean) -> Unit)? = null
     private var airplaneModeCallback: ((Boolean) -> Unit)? = null
+    private var networkChangeCallback: ((NetworkStatus) -> Unit)? = null
 
     private var locationConfig: LocationConfig? = null
 
@@ -76,6 +78,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         permissionStatusMonitor = PermissionStatusMonitor(context)
         mockLocationMonitor = MockLocationMonitor(context)
         airplaneModeMonitor = AirplaneModeMonitor(context)
+        networkInfoMonitor = NetworkInfoMonitor(context)
 
         // Give the live pusher a Context so it can build its durable SQLite
         // queue (used only when LivePushConfig.persistQueue is enabled).
@@ -682,6 +685,33 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         airplaneModeMonitor?.setCallback(callback)
     }
 
+    // === Network Info (cellular generation / transport change events) ===
+
+    override fun startNetworkMonitoring() {
+        ensureInitialized()
+        networkInfoMonitor?.onChange = { status -> networkChangeCallback?.invoke(status) }
+        networkInfoMonitor?.start()
+    }
+
+    override fun stopNetworkMonitoring() {
+        networkInfoMonitor?.stop()
+    }
+
+    override fun getNetworkStatus(): NetworkStatus {
+        ensureInitialized()
+        return networkInfoMonitor?.currentStatus() ?: NetworkStatus(
+            transport = NetworkTransport.NONE,
+            generation = CellularGeneration.UNKNOWN,
+            radioTechnology = "",
+            isExpensive = false,
+            isConstrained = false
+        )
+    }
+
+    override fun onNetworkChange(callback: (status: NetworkStatus) -> Unit) {
+        networkChangeCallback = callback
+    }
+
     // === Distance Utilities ===
 
     override fun getDistanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -794,5 +824,6 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         permissionStatusMonitor?.destroy()
         mockLocationMonitor?.destroy()
         airplaneModeMonitor?.destroy()
+        networkInfoMonitor?.stop()
     }
 }

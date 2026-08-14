@@ -2,6 +2,7 @@
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -24,9 +25,16 @@
   </queries>
 
   <application>
+    <!-- Both types are declared deliberately. On API 34+ startForeground() only
+         accepts a type declared here, and `shortService` is the escape hatch the
+         service uses when the location-typed promotion is refused (permission
+         revoked, or a background start): it needs no runtime permission, so it
+         can still satisfy the "did call startForeground" watchdog before the
+         service shuts itself down. Without it declared that fallback throws, and
+         the process dies with ForegroundServiceDidNotStartInTimeException. -->
     <service
       android:name=".LocationForegroundService"
-      android:foregroundServiceType="location"
+      android:foregroundServiceType="location|shortService"
       android:exported="false" />
 
     <!-- Geofence transitions are delivered here via an explicit-component

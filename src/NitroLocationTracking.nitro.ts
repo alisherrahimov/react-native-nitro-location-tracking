@@ -4,6 +4,8 @@ import type { HybridObject } from 'react-native-nitro-modules';
 
 export type AccuracyLevel = 'high' | 'balanced' | 'low';
 export type ConnectionState = 'connected' | 'disconnected' | 'reconnecting';
+export type CellularGeneration = '2g' | '3g' | '4g' | '5g' | 'unknown';
+export type NetworkTransport = 'cellular' | 'wifi' | 'ethernet' | 'other' | 'none';
 
 // ─── Types ───────────────────────────────────────────
 
@@ -222,6 +224,20 @@ export type PermissionStatus =
 
 export type PermissionStatusCallback = (status: PermissionStatus) => void;
 
+export interface NetworkStatus {
+  transport: NetworkTransport;
+  /** 'unknown' whenever transport !== 'cellular', or when the OS won't say. */
+  generation: CellularGeneration;
+  /** Raw OS radio string, for diagnostics/Sentry. iOS: CTRadioAccessTechnology*. Android: TelephonyManager network-type name. */
+  radioTechnology: string;
+  /** Cellular or personal hotspot. */
+  isExpensive: boolean;
+  /** iOS Low Data Mode. Always false on Android. */
+  isConstrained: boolean;
+}
+
+export type NetworkChangeCallback = (status: NetworkStatus) => void;
+
 // ─── Hybrid Object ──────────────────────────────────
 
 export interface NitroLocationTracking
@@ -321,6 +337,18 @@ export interface NitroLocationTracking
   // === Device State Monitoring ===
   isAirplaneModeEnabled(): boolean;
   onAirplaneModeChange(callback: (isEnabled: boolean) => void): void;
+
+  // === Network Info (cellular generation / transport change events) ===
+  /** Idempotent — calling twice does not double-subscribe or double-emit. */
+  startNetworkMonitoring(): void;
+  stopNetworkMonitoring(): void;
+  /** Synchronous snapshot for cold reads. */
+  getNetworkStatus(): NetworkStatus;
+  /**
+   * Fires only on change (native dedupes against the last emitted status) plus
+   * once immediately on `startNetworkMonitoring()` with the current state.
+   */
+  onNetworkChange(callback: NetworkChangeCallback): void;
 
   // === Background execution / battery optimization ===
   // On many Android OEMs (Xiaomi/MIUI, Huawei/EMUI, Oppo/ColorOS, Vivo, Samsung)
