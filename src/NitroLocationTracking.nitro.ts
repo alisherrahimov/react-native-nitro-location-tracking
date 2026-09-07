@@ -5,6 +5,28 @@ import type { HybridObject } from 'react-native-nitro-modules';
 export type AccuracyLevel = 'high' | 'balanced' | 'low';
 export type ConnectionState = 'connected' | 'disconnected' | 'reconnecting';
 export type CellularGeneration = 'gen2' | 'gen3' | 'gen4' | 'gen5' | 'unknown';
+/**
+ * Outcome of `startTracking()`.
+ *
+ * Every value other than `'started'` means no tracking session and no
+ * foreground service were started, so JS is free to retry.
+ *
+ * `'appBackgrounded'` exists because `startForegroundService()` arms a ~10s
+ * OS watchdog that only a successful `startForeground()` disarms. A process
+ * that is cached and then frozen (Android 14+ Cached Apps Freezer) cannot run
+ * `Service.onCreate` inside that window, and the resulting
+ * `ForegroundServiceDidNotStartInTimeException` is fatal and uncatchable.
+ * Starting from the background is also outright forbidden for a
+ * `location`-typed service on Android 12+. Refusing the start is the only
+ * safe answer; call `startTracking()` again once the app is foreground.
+ */
+export type TrackingStartResult =
+  | 'started'
+  | 'appBackgrounded'
+  | 'permissionDenied'
+  | 'engineRefused'
+  | 'notConfigured';
+
 export type NetworkTransport =
   | 'cellular'
   | 'wifi'
@@ -249,7 +271,14 @@ export interface NitroLocationTracking
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   // === Location Engine ===
   configure(config: LocationConfig): void;
-  startTracking(): void;
+  /**
+   * Start a tracking session and its foreground service.
+   *
+   * Never throws and never crashes the process: every refusal is reported
+   * through the returned [TrackingStartResult], and only `'started'` means
+   * tracking is running.
+   */
+  startTracking(): TrackingStartResult;
   stopTracking(): void;
   getCurrentLocation(): Promise<LocationData>;
   isTracking(): boolean;

@@ -1,6 +1,8 @@
 package com.margelo.nitro.nitrolocationtracking
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
@@ -123,14 +125,14 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         ensureInitialized()
     }
 
-    override fun startTracking() {
+    override fun startTracking(): TrackingStartResult {
         val config = locationConfig ?: run {
             Log.w(TAG, "startTracking called but no config set — call configure() first")
-            return
+            return TrackingStartResult.NOTCONFIGURED
         }
         if (!ensureInitialized()) {
             Log.e(TAG, "startTracking failed — could not initialize components")
-            return
+            return TrackingStartResult.NOTCONFIGURED
         }
 
         // Permission guard. Starting a foreground service of type `location`
@@ -143,10 +145,17 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             permissionStatus == PermissionStatus.RESTRICTED) {
             Log.w(TAG, "startTracking aborted — location permission is $permissionStatus")
             permissionStatusCallback?.invoke(permissionStatus)
-            return
+            return TrackingStartResult.PERMISSIONDENIED
         }
 
-        val engine = locationEngine ?: return
+        // Foreground guard. Checked before the engine starts so a refusal
+        // leaves no location request behind. See [isAppInForeground].
+        if (!isAppInForeground()) {
+            Log.w(TAG, "startTracking aborted — app is not in the foreground")
+            return TrackingStartResult.APPBACKGROUNDED
+        }
+
+        val engine = locationEngine ?: return TrackingStartResult.NOTCONFIGURED
         engine.onLocation = { data ->
             locationCallback?.invoke(data)
         }
@@ -159,7 +168,7 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             // if tracking itself could not be started — the FGS would just
             // be killed immediately by the OS.
             Log.w(TAG, "startTracking aborted — location engine refused to start")
-            return
+            return TrackingStartResult.ENGINEREFUSED
         }
 
         try {
@@ -172,10 +181,48 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
             // Roll back the tracking session so we don't leak a location
             // request with no owning foreground service.
             try { engine.stop() } catch (_: Exception) {}
+            return TrackingStartResult.PERMISSIONDENIED
         } catch (e: Exception) {
             Log.w(TAG, "Could not start foreground service: ${e.message}")
             try { engine.stop() } catch (_: Exception) {}
+            return TrackingStartResult.ENGINEREFUSED
         }
+        return TrackingStartResult.STARTED
+    }
+
+    /**
+     * True when this process holds a visible activity.
+     *
+     * A `location`-typed foreground service may only be started while the app
+     * is foreground: Android 12+ refuses a background start outright, and
+     * `startForegroundService()` arms a ~10s watchdog that a process which is
+     * cached and then frozen cannot satisfy — `Service.onCreate` never runs in
+     * time and the process is killed with the uncatchable
+     * `ForegroundServiceDidNotStartInTimeException`.
+     *
+     * IMPORTANCE_FOREGROUND (100) is the only importance that guarantees a
+     * visible activity. IMPORTANCE_FOREGROUND_SERVICE (125) is deliberately
+     * rejected: it means some service — possibly ours from a previous session
+     * — is running while no activity is, which is precisely the background
+     * start the OS forbids.
+     *
+     * Fails open when the importance cannot be read: refusing every start on a
+     * device whose ActivityManager is uncooperative would break tracking
+     * outright, and the promotion path itself is already exception-guarded.
+     */
+    private fun isAppInForeground(): Boolean {
+        val context = NitroModules.applicationContext ?: return true
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return true
+        val processes = try {
+            manager.runningAppProcesses
+        } catch (e: Exception) {
+            Log.w(TAG, "could not read running app processes: ${e.message}")
+            null
+        } ?: return true
+        val pid = android.os.Process.myPid()
+        val importance = processes.firstOrNull { it.pid == pid }?.importance ?: return true
+        return importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
     }
 
     override fun stopTracking() {

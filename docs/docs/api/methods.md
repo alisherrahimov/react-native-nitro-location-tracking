@@ -9,7 +9,7 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | Method | Returns | Description |
 | --- | --- | --- |
 | `configure(config)` | `void` | Set location tracking configuration |
-| `startTracking()` | `void` | Start location tracking |
+| `startTracking()` | `TrackingStartResult` | Start location tracking. Only `'started'` means it ran — see [`TrackingStartResult`](./types#trackingstartresult) |
 | `stopTracking()` | `void` | Stop location tracking |
 | `getCurrentLocation()` | `Promise<LocationData>` | Get a one-shot location |
 | `isTracking()` | `boolean` | Check if tracking is active |

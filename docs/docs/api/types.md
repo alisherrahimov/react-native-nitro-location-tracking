@@ -137,6 +137,39 @@ type PermissionStatus =
   | 'always';
 ```
 
+## `TrackingStartResult`
+
+```ts
+type TrackingStartResult =
+  | 'started'
+  | 'appBackgrounded'
+  | 'permissionDenied'
+  | 'engineRefused'
+  | 'notConfigured';
+```
+
+Returned by `startTracking()`. Every value other than `'started'` means no
+tracking session and no foreground service were started, so the call is safe to
+retry.
+
+| Value | Meaning |
+| --- | --- |
+| `'started'` | Tracking is running. |
+| `'appBackgrounded'` | Android only. The app holds no visible activity, so a `location` foreground service cannot be started. Retry once the app is foreground. |
+| `'permissionDenied'` | Location permission is denied or restricted. `onPermissionStatusChange` also fires. |
+| `'engineRefused'` | The platform location engine would not start (provider disabled, or the foreground service was rejected). |
+| `'notConfigured'` | `configure()` was never called, or native components could not initialise. |
+
+`'appBackgrounded'` is a deliberate refusal, not a failure. `startForegroundService()`
+arms a ~10s OS watchdog that only a successful `startForeground()` disarms, and a
+process that is cached and then frozen (Android 14+ Cached Apps Freezer) cannot run
+`Service.onCreate` inside that window — the resulting
+`ForegroundServiceDidNotStartInTimeException` is fatal and cannot be caught. Android
+12+ forbids the background start outright as well. iOS has no foreground service and
+always returns `'started'`.
+
+See the [Location Tracking guide](../guides/location-tracking) for the retry pattern.
+
 ## `NetworkStatus`
 
 ```ts

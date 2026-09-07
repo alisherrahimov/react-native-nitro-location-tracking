@@ -50,7 +50,7 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
         locationEngine.configure(config)
     }
 
-    func startTracking() throws {
+    func startTracking() throws -> TrackingStartResult {
         locationEngine.onLocation = { [weak self] data in
             self?.locationCallback?(data)
         }
@@ -58,6 +58,11 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
             self?.motionCallback?(isMoving)
         }
         locationEngine.start()
+        // iOS has no foreground service and so no promotion watchdog: Core
+        // Location either has authorisation or silently delivers nothing, which
+        // onPermissionStatusChange already reports. There is no start-time
+        // refusal to surface here.
+        return .started
     }
 
     func stopTracking() throws {
