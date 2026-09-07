@@ -1,36 +1,95 @@
 # Changelog
 
-## [0.1.31](https://dev.azure.com/bellissimouz/Bellissimo/_git/compare/v0.1.30...v0.1.31) (2026-09-07)
-
-
-* fix(ios)!: rename CellularGeneration values to valid Swift identifiers ([68789c0](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/68789c0d8a045b1ac519085efdba912a18bc9663)), closes [String#untaint](https://dev.azure.com/String/issues/untaint)
-
+## 0.1.31 (2026-09-07)
 
 ### Bug Fixes
 
-* **android:** refuse startTracking() when the app is backgrounded ([b614eb6](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/b614eb65a876ffcec65d37cf9e05999dd353aa52))
-* **build:** exclude docs from the publish-time type build ([2841f61](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/2841f61805bb2cc98f6d1e25fb1dc24b629455ab))
+* **ios:** rename `CellularGeneration` values to valid Swift identifiers ([68789c0](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/68789c0d8a045b1ac519085efdba912a18bc9663))
 
+  The generated Swift for a string-union member is unusable when the member does
+  not start with a letter. Nitrogen derives the native name with
+  `escapeCppName('2g').toUpperCase()` → `_2G`, then `toLowerCamelCase('_2G')`
+  for the Swift spelling, which splits on `_`, drops the now-empty leading part,
+  and returns `2g`. Both artefacts inherited it: the C++ header annotated the
+  case as `SWIFT_NAME(2g)` and `CellularGeneration.swift` emitted `self = .2g`.
+  Every iOS build of a consumer app on 0.1.30 therefore failed with `'g' is not
+  a valid digit in integer literal`. Kotlin was unaffected, since it uses the
+  already-escaped `_2G` directly.
+
+  Still unfixed in nitrogen 0.37.1, so renaming the union to letter-leading
+  values keeps the fix inside this library rather than in a patched dependency.
+
+  **Breaking:** see below.
+
+* **android:** refuse `startTracking()` when the app is backgrounded ([b614eb6](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/b614eb65a876ffcec65d37cf9e05999dd353aa52))
+
+  `startForegroundService()` arms a ~10s OS watchdog that only a successful
+  `startForeground()` disarms. A process that is cached and then frozen —
+  Android 14+ Cached Apps Freezer, which low-RAM devices under memory pressure
+  reach quickly — cannot run `Service.onCreate` inside that window, and the
+  resulting `ForegroundServiceDidNotStartInTimeException` is delivered on
+  unfreeze, fatal and uncatchable. Android 12+ forbids the background start of a
+  `location`-typed service outright as well.
+
+  `startTracking()` now checks its own process importance and returns before the
+  location engine starts, so a refusal leaves no location request behind. Only
+  `IMPORTANCE_FOREGROUND` is accepted: `IMPORTANCE_FOREGROUND_SERVICE` means a
+  service is running while no activity is, which is precisely the background
+  start the OS refuses. The check fails open when `ActivityManager` will not
+  answer.
+
+  This is a backstop, not a substitute for gating the call site. A start fired
+  right after a permission dialog, or from a GPS-toggle listener, can land while
+  the app is on its way to the background — the
+  [Location Tracking guide](https://alisherrahimov.github.io/react-native-nitro-location-tracking/docs/guides/location-tracking)
+  documents the `AppState` pattern for that.
+
+  **API change:** `startTracking()` returns `TrackingStartResult` instead of
+  `void` — `'started'`, `'appBackgrounded'`, `'permissionDenied'`,
+  `'engineRefused'` or `'notConfigured'`. Only `'started'` means tracking is
+  running; every other value means nothing was started and the call is safe to
+  retry. The four earlier silent-return paths are now visible to JS for the
+  first time. Callers that ignore the return value keep working. iOS has no
+  foreground service and always returns `'started'`.
+
+* **build:** exclude `docs` from the publish-time type build ([2841f61](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/2841f61805bb2cc98f6d1e25fb1dc24b629455ab))
+
+  `tsconfig.build.json` replaces the base config's `exclude` list rather than
+  extending it, so adding the Docusaurus site under `docs/` silently
+  reintroduced it to bob's typescript target. `yarn prepare` — which npm runs on
+  publish — failed on `docs/src/pages/index.tsx`, whose `@site/...` alias only
+  resolves through Docusaurus's own webpack config. Root `tsc` was unaffected
+  because it reads the base config, so nothing caught this until a release was
+  attempted.
+
+* **ios:** exclude `cpp/__tests__` from the podspec sources ([68789c0](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/68789c0d8a045b1ac519085efdba912a18bc9663))
+
+  The stubs there redefine `HybridObject` and broke the example build. Consumers
+  were never exposed to it, since the npm `files` field already strips
+  `__tests__`.
+
+* **example:** repair the bundler setup for Ruby 4.0 ([68789c0](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/68789c0d8a045b1ac519085efdba912a18bc9663))
+
+  `Gemfile.lock` pinned `BUNDLED WITH 1.17.2`, which made bundler switch to a
+  vendored copy that calls `String#untaint`, removed in Ruby 3.2. `base64` and
+  `nkf` are now explicit dependencies (both dropped from Ruby's default gems),
+  and relaxing the `xcodeproj` and `concurrent-ruby` pins lets CocoaPods resolve
+  to 1.17.0, matching the version that generated `Podfile.lock`. Development
+  setup only — nothing shipped in the package changes.
 
 ### Features
 
-* **docs:** initialize Docusaurus documentation site with essential components and styles ([bd6a67f](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/bd6a67fa944e07e3fef104895e9f3eec20250e02))
+* **docs:** documentation site at [alisherrahimov.github.io/react-native-nitro-location-tracking](https://alisherrahimov.github.io/react-native-nitro-location-tracking) ([bd6a67f](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/bd6a67fa944e07e3fef104895e9f3eec20250e02))
 
+  15 guides plus an API reference, deployed from `docs/` on push to `main`.
 
 ### BREAKING CHANGES
 
-* NetworkStatus.generation now reports 'gen2' | 'gen3' | 'gen4' |
-'gen5' | 'unknown' instead of '2g' | '3g' | '4g' | '5g' | 'unknown'. Android
-consumers reading status.generation must update their comparisons; no iOS
-consumer can be affected, since this enum never compiled on iOS.
-
-Also excludes cpp/__tests__ from the podspec source globs -- the stubs there
-redefine HybridObject and broke the example build once the Swift errors were out
-of the way. Consumers were never exposed to it, since the npm files field
-already strips __tests__.
-
-The example's bundler setup is repaired alongside it: the lockfile pinned
-BUNDLED WITH 1.17.2, which made bundler switch to a vendored copy that calls
+* `NetworkStatus.generation` now reports `'gen2' | 'gen3' | 'gen4' | 'gen5' |
+  'unknown'` instead of `'2g' | '3g' | '4g' | '5g' | 'unknown'`. Android
+  consumers reading `status.generation` must update their comparisons. No iOS
+  consumer can be affected: this enum never compiled on iOS, so 0.1.30 could not
+  be built there at all.
 
 ## 0.1.30 (2026-08-14)
 
