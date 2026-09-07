@@ -21,6 +21,14 @@ A high-performance React Native location tracking library built with [Nitro Modu
 - **Permission helpers** for fine, background, and notification permissions
 - **Built on Nitro Modules** for near-native performance via JSI
 
+## Support
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/alilion" target="_blank">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60" width="217">
+  </a>
+</p>
+
 ## Installation
 
 ```sh
@@ -1337,8 +1345,3 @@ Made with [create-react-native-library](https://github.com/callstack/react-nativ
 
 ---
 
-<p align="center">
-  <a href="https://www.buymeacoffee.com/alilion" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60" width="217">
-  </a>
-</p>
