@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.31](https://dev.azure.com/bellissimouz/Bellissimo/_git/compare/v0.1.30...v0.1.31) (2026-09-07)
+
+
+* fix(ios)!: rename CellularGeneration values to valid Swift identifiers ([68789c0](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/68789c0d8a045b1ac519085efdba912a18bc9663)), closes [String#untaint](https://dev.azure.com/String/issues/untaint)
+
+
+### Bug Fixes
+
+* **android:** refuse startTracking() when the app is backgrounded ([b614eb6](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/b614eb65a876ffcec65d37cf9e05999dd353aa52))
+* **build:** exclude docs from the publish-time type build ([2841f61](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/2841f61805bb2cc98f6d1e25fb1dc24b629455ab))
+
+
+### Features
+
+* **docs:** initialize Docusaurus documentation site with essential components and styles ([bd6a67f](https://dev.azure.com/bellissimouz/Bellissimo/_git/commits/bd6a67fa944e07e3fef104895e9f3eec20250e02))
+
+
+### BREAKING CHANGES
+
+* NetworkStatus.generation now reports 'gen2' | 'gen3' | 'gen4' |
+'gen5' | 'unknown' instead of '2g' | '3g' | '4g' | '5g' | 'unknown'. Android
+consumers reading status.generation must update their comparisons; no iOS
+consumer can be affected, since this enum never compiled on iOS.
+
+Also excludes cpp/__tests__ from the podspec source globs -- the stubs there
+redefine HybridObject and broke the example build once the Swift errors were out
+of the way. Consumers were never exposed to it, since the npm files field
+already strips __tests__.
+
+The example's bundler setup is repaired alongside it: the lockfile pinned
+BUNDLED WITH 1.17.2, which made bundler switch to a vendored copy that calls
+
 ## 0.1.30 (2026-08-14)
 
 ### Bug Fixes
