@@ -160,10 +160,10 @@ class NetworkInfoMonitor(private val context: Context) {
 
     private fun generationFrom(radioTechnology: String?): CellularGeneration {
         return when (radioTechnology) {
-            "GPRS", "EDGE", "CDMA", "1xRTT", "IDEN" -> CellularGeneration._2G
-            "UMTS", "EVDO_0", "EVDO_A", "HSDPA", "HSUPA", "HSPA", "EVDO_B", "EHRPD", "HSPAP" -> CellularGeneration._3G
-            "LTE" -> CellularGeneration._4G
-            "NR" -> CellularGeneration._5G
+            "GPRS", "EDGE", "CDMA", "1xRTT", "IDEN" -> CellularGeneration.GEN2
+            "UMTS", "EVDO_0", "EVDO_A", "HSDPA", "HSUPA", "HSPA", "EVDO_B", "EHRPD", "HSPAP" -> CellularGeneration.GEN3
+            "LTE" -> CellularGeneration.GEN4
+            "NR" -> CellularGeneration.GEN5
             else -> CellularGeneration.UNKNOWN
         }
     }

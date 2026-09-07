@@ -142,7 +142,7 @@ type PermissionStatus =
 ```ts
 interface NetworkStatus {
   transport: 'cellular' | 'wifi' | 'ethernet' | 'other' | 'none';
-  generation: '2g' | '3g' | '4g' | '5g' | 'unknown';
+  generation: 'gen2' | 'gen3' | 'gen4' | 'gen5' | 'unknown';
   radioTechnology: string;
   isExpensive: boolean;
   isConstrained: boolean;

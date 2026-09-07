@@ -85,7 +85,7 @@ final class NetworkInfoMonitor {
     private func buildStatus(path: NWPath?) -> NetworkStatus {
         let transport = transport(from: path)
         let radio = transport == .cellular ? currentRadioTechnology() : nil
-        let generation = transport == .cellular ? generation(from: radio) : (CellularGeneration(fromString: "unknown") ?? .unknown)
+        let generation = transport == .cellular ? generation(from: radio) : (.unknown)
         return NetworkStatus(
             transport: transport,
             generation: generation,
@@ -120,27 +120,27 @@ final class NetworkInfoMonitor {
     }
 
     private func generation(from radioTechnology: String?) -> CellularGeneration {
-        guard let tech = radioTechnology else { return CellularGeneration(fromString: "unknown") ?? .unknown }
+        guard let tech = radioTechnology else { return .unknown }
 
         switch tech {
         case CTRadioAccessTechnologyGPRS, CTRadioAccessTechnologyEdge, CTRadioAccessTechnologyCDMA1x:
-            return CellularGeneration(fromString: "2g") ?? .unknown
+            return .gen2
         case CTRadioAccessTechnologyWCDMA, CTRadioAccessTechnologyHSDPA, CTRadioAccessTechnologyHSUPA,
              CTRadioAccessTechnologyCDMAEVDORev0, CTRadioAccessTechnologyCDMAEVDORevA,
              CTRadioAccessTechnologyCDMAEVDORevB, CTRadioAccessTechnologyeHRPD:
-            return CellularGeneration(fromString: "3g") ?? .unknown
+            return .gen3
         case CTRadioAccessTechnologyLTE:
-            return CellularGeneration(fromString: "4g") ?? .unknown
+            return .gen4
         default:
             if #available(iOS 14.1, *) {
                 if tech == CTRadioAccessTechnologyNR || tech == CTRadioAccessTechnologyNRNSA {
-                    return CellularGeneration(fromString: "5g") ?? .unknown
+                    return .gen5
                 }
             }
             // Many carriers report LTE while actually on 5G NSA — Apple's own
             // status bar lies about this too. Unrecognised strings (nil / no
             // SIM / airplane mode) fall through here as 'unknown'.
-            return CellularGeneration(fromString: "unknown") ?? .unknown
+            return .unknown
         }
     }
 }

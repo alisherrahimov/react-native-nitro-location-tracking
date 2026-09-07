@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
     "ios/**/*.{m,mm}",
     "cpp/**/*.{hpp,cpp}",
   ]
-  s.exclude_files = "ios/widget/**/*"
+  s.exclude_files = ["ios/widget/**/*", "cpp/__tests__/**/*"]
 
   # CoreLocation for GPS; CoreMotion for the adaptive-accuracy motion engine;
   # CoreTelephony + Network for cellular-generation/transport change events.

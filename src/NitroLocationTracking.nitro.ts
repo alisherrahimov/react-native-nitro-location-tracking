@@ -4,8 +4,13 @@ import type { HybridObject } from 'react-native-nitro-modules';
 
 export type AccuracyLevel = 'high' | 'balanced' | 'low';
 export type ConnectionState = 'connected' | 'disconnected' | 'reconnecting';
-export type CellularGeneration = '2g' | '3g' | '4g' | '5g' | 'unknown';
-export type NetworkTransport = 'cellular' | 'wifi' | 'ethernet' | 'other' | 'none';
+export type CellularGeneration = 'gen2' | 'gen3' | 'gen4' | 'gen5' | 'unknown';
+export type NetworkTransport =
+  | 'cellular'
+  | 'wifi'
+  | 'ethernet'
+  | 'other'
+  | 'none';
 
 // ─── Types ───────────────────────────────────────────
 

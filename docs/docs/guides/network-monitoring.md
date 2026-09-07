@@ -36,7 +36,7 @@ NitroLocationModule.stopNetworkMonitoring();
 interface NetworkStatus {
   transport: 'cellular' | 'wifi' | 'ethernet' | 'other' | 'none';
   // 'unknown' whenever transport !== 'cellular', or when the OS won't say.
-  generation: '2g' | '3g' | '4g' | '5g' | 'unknown';
+  generation: 'gen2' | 'gen3' | 'gen4' | 'gen5' | 'unknown';
   // Raw OS radio string, for diagnostics/Sentry.
   // iOS: CTRadioAccessTechnology*. Android: TelephonyManager network-type name.
   radioTechnology: string;
