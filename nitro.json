@@ -9,11 +9,20 @@
   },
   "autolinking": {
     "NitroLocationTracking": {
-      "swift": "NitroLocationTracking",
-      "kotlin": "NitroLocationTracking"
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "NitroLocationTracking"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "NitroLocationTracking"
+      }
     },
     "NitroLocationComplexLogicsCalculation": {
-      "cpp": "HybridNitroLocationComplexLogicsCalculation"
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridNitroLocationComplexLogicsCalculation"
+      }
     }
   },
   "ignorePaths": ["node_modules"]
