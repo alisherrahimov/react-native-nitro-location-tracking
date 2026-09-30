@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.32 (2026-09-30)
+
+### Chores
+
+* **deps:** upgrade `react-native-nitro-modules` and `nitrogen` to 0.36.5 ([5b5cbc6](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/5b5cbc6dab8f867acee30a64e76befaee93eb18f))
+
+  Native code is regenerated with nitrogen 0.36.5 and verified with iOS and
+  Android example builds. `nitro.json` now uses the `all` / `ios` / `android`
+  autolinking syntax, since nitrogen 0.36+ deprecates the `cpp` / `swift` /
+  `kotlin` keys. The mapping is unchanged.
+
+  0.37.x is skipped on purpose. NitroModules 0.37.0 adds React view headers
+  (`ViewComponentDescriptor.hpp` and three others) to its public umbrella, which
+  pulls glog into the Swift module. iOS builds of NitroModules then fail with
+  `import of module 'glog.glog.log_severity' appears within namespace 'google'`.
+  The failure is inside NitroModules itself, so every consumer app would hit it,
+  and working around it in the library is not possible.
+
+### BREAKING CHANGES
+
+* The `react-native-nitro-modules` peer dependency is now `^0.36.5` (was
+  `^0.33.9`). Apps must upgrade `react-native-nitro-modules` to 0.36.x. Stay on
+  0.36.x rather than 0.37.x for now (see above).
+
 ## 0.1.31 (2026-09-07)
 
 ### Bug Fixes
