@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.33 (2026-11-09)
 
 ### Features
 
-* **live-activity:** fully dynamic Live Activity content, controlled from JS
+* **live-activity:** fully dynamic Live Activity content, controlled from JS ([2e09213](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/2e092136d708d9f8c76c746740d2361d7a37dab9))
 
   New `LiveActivity` controller (`start` / `update` / `end` / `isSupported` /
   `areEnabled` / `isRunning`) and `LiveActivityContent` type. Every text, icon
@@ -22,9 +22,9 @@
 
 ### Bug Fixes
 
-* **live-activity:** the legacy `startLiveActivity` / `endLiveActivity` end
-  every activity, not only the first. This fixes cards stuck on the Lock Screen
-  after a crash or a double start.
+* **live-activity:** the legacy `startLiveActivity` / `endLiveActivity` now end every activity, not only the first ([2e09213](https://github.com/alisherrahimov/react-native-nitro-location-tracking/commit/2e092136d708d9f8c76c746740d2361d7a37dab9))
+
+  This fixes cards stuck on the Lock Screen after a crash or a double start.
 
 ### Deprecations
 
