@@ -848,6 +848,35 @@ class NitroLocationTracking : HybridNitroLocationTrackingSpec() {
         notificationService?.endDeliveryActivity()
     }
 
+    // === Live Activity — dynamic content ===
+    // Android renders the same content as an ongoing notification card.
+
+    override fun isLiveActivitySupported(): Boolean = true
+
+    override fun areLiveActivitiesEnabled(): Boolean {
+        ensureInitialized()
+        return notificationService?.areNotificationsEnabled() ?: false
+    }
+
+    override fun isLiveActivityRunning(): Boolean =
+        notificationService?.isDynamicActivityShown ?: false
+
+    override fun startLiveActivityWithContent(content: LiveActivityContent) {
+        ensureInitialized()
+        notificationService?.showDynamicActivity(content)
+    }
+
+    override fun updateLiveActivityWithContent(content: LiveActivityContent) {
+        ensureInitialized()
+        val service = notificationService ?: return
+        // Mirror iOS: update is a no-op when nothing is running.
+        if (service.isDynamicActivityShown) service.showDynamicActivity(content)
+    }
+
+    override fun endLiveActivityWithContent(finalContent: LiveActivityContent?, dismissAfterSeconds: Double?) {
+        notificationService?.endDynamicActivity(finalContent, dismissAfterSeconds)
+    }
+
     // === Notifications ===
 
     override fun showLocalNotification(title: String, body: String) {

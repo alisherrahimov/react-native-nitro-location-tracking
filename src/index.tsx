@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { NitroModules } from 'react-native-nitro-modules';
 import type { NitroLocationTracking } from './NitroLocationTracking.nitro';
+import { createLiveActivityController } from './LiveActivity';
 
 const NitroLocationModule =
   NitroModules.createHybridObject<NitroLocationTracking>(
@@ -13,13 +14,23 @@ export const NitroLocationCalculations = NitroModules.createHybridObject<
 
 export default NitroLocationModule;
 
-// Live Activities are an iOS-only feature (Android calls are safe no-ops).
-// Use this guard before calling startLiveActivity / updateLiveActivity / endLiveActivity.
+/**
+ * Fully dynamic Live Activity (iOS Lock Screen / Dynamic Island, Android
+ * ongoing notification). Every text, icon, color, countdown and deep link is
+ * controlled from JS — see `LiveActivityContent`.
+ */
+export const LiveActivity = createLiveActivityController(NitroLocationModule);
+
+/**
+ * true on iOS 16.2+ only. Use before the legacy positional API
+ * (startLiveActivity / updateLiveActivity / endLiveActivity).
+ * For the dynamic API prefer `LiveActivity.isSupported()`.
+ */
 export function isLiveActivitySupported(): boolean {
-  return Platform.OS === 'ios';
+  return Platform.OS === 'ios' && NitroLocationModule.isLiveActivitySupported();
 }
 
-// Convenience type for the mutable state passed to startLiveActivity / updateLiveActivity.
+/** @deprecated Legacy state for startLiveActivity / updateLiveActivity. Use `LiveActivityContent`. */
 export type LiveActivityState = {
   status: 'picking_up' | 'on_the_way' | 'arriving' | 'delivered';
   statusText: string;
@@ -27,6 +38,11 @@ export type LiveActivityState = {
   distanceMeters: number;
 };
 
+export { createLiveActivityController } from './LiveActivity';
+export type {
+  LiveActivityController,
+  LiveActivityEndOptions,
+} from './LiveActivity';
 export { calculateBearing, shortestRotation } from './bearing';
 export { LocationSmoother } from './LocationSmoother';
 export { SnapToRoad } from './SnapToRoad';
@@ -44,6 +60,10 @@ export type {
   GeofenceCallback,
   GeofenceEvent,
   GeofenceRegion,
+  LiveActivityContent,
+  LiveActivityIcon,
+  LiveActivityIconType,
+  LiveActivitySlot,
   LivePushConfig,
   LivePushResult,
   LivePushResultCallback,

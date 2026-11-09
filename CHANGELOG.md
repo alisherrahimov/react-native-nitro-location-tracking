@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **live-activity:** fully dynamic Live Activity content, controlled from JS
+
+  New `LiveActivity` controller (`start` / `update` / `end` / `isSupported` /
+  `areEnabled` / `isRunning`) and `LiveActivityContent` type. Every text, icon
+  (SF Symbol, emoji, or widget asset), color, native countdown
+  (`timerEndEpochMs`), progress bar, compact Dynamic Island region, stale label
+  and tap deep link is set from JS and can change on any update, so the order
+  shown can change without restarting the activity. `end()` can show a final
+  state for a few seconds before dismissing. Android renders the same content
+  as an ongoing notification, with a native chronometer countdown and the deep
+  link as the tap intent.
+
+  New widget template `ios/widget/NitroLiveActivityWidget.swift`. The shared
+  `ios/shared/NitroLiveActivityAttributes.swift` is compiled into the pod and
+  added to the widget target by reference, so the two can't drift apart.
+
+### Bug Fixes
+
+* **live-activity:** the legacy `startLiveActivity` / `endLiveActivity` end
+  every activity, not only the first. This fixes cards stuck on the Lock Screen
+  after a crash or a double start.
+
+### Deprecations
+
+* `startLiveActivity` / `updateLiveActivity` / `endLiveActivity`,
+  `LiveActivityState` and `CourierWidgetLiveActivity.swift`. They still work.
+  Use `LiveActivity` and `NitroLiveActivityWidget` instead.
+* `isLiveActivitySupported()` (JS helper) now also checks iOS ≥ 16.2 natively.
+
 ## 0.1.32 (2026-09-30)
 
 ### Chores

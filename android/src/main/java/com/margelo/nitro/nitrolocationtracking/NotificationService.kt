@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -140,6 +142,112 @@ class NotificationService(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .apply { pi?.let { setContentIntent(it) } }
             .build()
+    }
+
+    // ─── Dynamic content (startLiveActivityWithContent) ──────────────────────
+
+    @Volatile
+    var isDynamicActivityShown: Boolean = false
+        private set
+
+    fun areNotificationsEnabled(): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    /** Renders / replaces the ongoing card from a fully dynamic content payload. */
+    fun showDynamicActivity(content: LiveActivityContent) {
+        notify(buildDynamicNotification(content, ongoing = true))
+        isDynamicActivityShown = true
+    }
+
+    /**
+     * Removes the card. With [finalContent] and a positive [dismissAfterSeconds]
+     * the final state stays visible (non-ongoing) and auto-dismisses.
+     */
+    fun endDynamicActivity(finalContent: LiveActivityContent?, dismissAfterSeconds: Double?) {
+        isDynamicActivityShown = false
+        val delayMs = ((dismissAfterSeconds ?: 0.0) * 1000).toLong()
+        if (finalContent != null && delayMs > 0) {
+            val notification = NotificationCompat.Builder(context, ACTIVITY_CHANNEL_ID)
+                .also { applyDynamicContent(it, finalContent, ongoing = false) }
+                .setTimeoutAfter(delayMs)
+                .build()
+            notify(notification)
+        } else {
+            NotificationManagerCompat.from(context).cancel(ACTIVITY_NOTIFICATION_ID)
+        }
+    }
+
+    private fun buildDynamicNotification(content: LiveActivityContent, ongoing: Boolean): android.app.Notification =
+        NotificationCompat.Builder(context, ACTIVITY_CHANNEL_ID)
+            .also { applyDynamicContent(it, content, ongoing) }
+            .build()
+
+    private fun applyDynamicContent(
+        builder: NotificationCompat.Builder,
+        c: LiveActivityContent,
+        ongoing: Boolean
+    ) {
+        val emoji = c.icon?.takeIf { it.type == LiveActivityIconType.EMOJI }?.name
+        val title = if (emoji.isNullOrBlank()) c.title else "$emoji ${c.title}"
+        val valueText = c.value?.let { v -> c.valueUnit?.let { "$v $it" } ?: v }
+            ?.takeIf { c.timerEndEpochMs == null }
+        val line = listOfNotNull(c.subtitle, valueText, c.secondaryValue)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+        val bigText = listOfNotNull(c.footerText, line.ifBlank { null }, c.footerTrailingText)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+
+        builder
+            .setContentTitle(title)
+            .setContentText(line)
+            .setStyle(NotificationCompat.BigTextStyle().setBigContentTitle(title).bigText(bigText))
+            .setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setOngoing(ongoing)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+
+        c.footerTrailingText?.let { builder.setSubText(it) }
+        parseHexColor(c.accentColor)?.let { builder.setColor(it) }
+        c.progress?.let { p ->
+            builder.setProgress(100, (p.coerceIn(0.0, 1.0) * 100).toInt(), false)
+        }
+        c.timerEndEpochMs?.let { endMs ->
+            // Native countdown — keeps ticking with JS suspended, like iOS.
+            builder.setWhen(endMs.toLong())
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+        }
+        contentIntent(c.deepLinkUrl)?.let { builder.setContentIntent(it) }
+    }
+
+    private fun contentIntent(deepLinkUrl: String?): PendingIntent? {
+        val intent = deepLinkUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)).setPackage(context.packageName) }
+            ?.takeIf { it.resolveActivity(context.packageManager) != null }
+            ?: context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?: return null
+        return PendingIntent.getActivity(
+            context, 2, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun parseHexColor(hex: String?): Int? {
+        if (hex.isNullOrBlank()) return null
+        val raw = hex.trim().removePrefix("#")
+        return try {
+            when (raw.length) {
+                6 -> Color.parseColor("#$raw")
+                // JS / iOS use #RRGGBBAA; Android expects #AARRGGBB.
+                8 -> Color.parseColor("#${raw.substring(6, 8)}${raw.substring(0, 6)}")
+                else -> null
+            }
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 
     fun showLocalNotification(title: String, body: String) {

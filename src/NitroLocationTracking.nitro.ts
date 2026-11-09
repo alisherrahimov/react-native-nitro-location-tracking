@@ -267,6 +267,92 @@ export type NetworkChangeCallback = (status: NetworkStatus) => void;
 
 // ─── Hybrid Object ──────────────────────────────────
 
+// ─── Live Activity (fully dynamic content) ──────────────────────────────────
+
+/**
+ * How `LiveActivityIcon.name` is interpreted by the widget.
+ * - `symbol` — an SF Symbol name, e.g. `"box.truck.fill"`.
+ * - `emoji`  — any string rendered as text, e.g. `"🚗"`.
+ * - `asset`  — an image in the **widget extension's** asset catalog.
+ */
+export type LiveActivityIconType = 'symbol' | 'emoji' | 'asset';
+
+export interface LiveActivityIcon {
+  type: LiveActivityIconType;
+  name: string;
+  /** Hex tint, `#RRGGBB` or `#RRGGBBAA`. Ignored for `emoji`. */
+  color?: string;
+}
+
+/**
+ * Content for a compact Dynamic Island region (compact leading / trailing /
+ * minimal). Priority when several fields are set: timer → text → icon.
+ */
+export interface LiveActivitySlot {
+  text?: string;
+  icon?: LiveActivityIcon;
+  /** Unix epoch ms. When set, iOS renders a native countdown to this moment. */
+  timerEndEpochMs?: number;
+  /** Hex color for text / timer. */
+  color?: string;
+}
+
+/**
+ * Everything the Live Activity shows. **Every field can change on every
+ * update** — nothing is baked into the widget. All text is pre-formatted /
+ * localized by JS. Optional fields that are omitted are simply hidden.
+ */
+export interface LiveActivityContent {
+  /** Main line, e.g. "On the way". */
+  title: string;
+  /** Second line, e.g. "#10423". */
+  subtitle?: string;
+  /** Leading icon (Lock Screen + expanded island). Default compact leading too. */
+  icon?: LiveActivityIcon;
+
+  /** Big trailing value, e.g. "12". Hidden when `timerEndEpochMs` is set. */
+  value?: string;
+  /** Unit under / after the value, e.g. "min". */
+  valueUnit?: string;
+  /**
+   * Unix epoch ms. When set, the value area becomes a native countdown that
+   * keeps ticking while JS is suspended or the app is killed.
+   */
+  timerEndEpochMs?: number;
+  /** Small line under the value, e.g. "2.4 km". */
+  secondaryValue?: string;
+
+  /** Bottom row text, e.g. a street address. */
+  footerText?: string;
+  footerIcon?: LiveActivityIcon;
+  /** Bottom row trailing text, e.g. "2 orders". */
+  footerTrailingText?: string;
+
+  /** 0…1. When set, a progress bar is drawn above the footer. */
+  progress?: number;
+
+  /** Hex colors. Accent tints value, progress bar and island keyline. */
+  accentColor?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  secondaryTextColor?: string;
+
+  /** Dynamic Island compact regions. Defaults: icon / value+unit / value. */
+  compactLeading?: LiveActivitySlot;
+  compactTrailing?: LiveActivitySlot;
+  minimal?: LiveActivitySlot;
+
+  /** Shown instead of the value once the content is stale, e.g. "Updating…". */
+  staleText?: string;
+  /** Opened when the activity is tapped, e.g. "myapp://delivery/10423". */
+  deepLinkUrl?: string;
+
+  /** Seconds until iOS marks this content stale (default 3600). */
+  staleAfterSeconds?: number;
+  /** iOS relevance score when several activities exist (default 0). */
+  relevanceScore?: number;
+}
+
 export interface NitroLocationTracking
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   // === Location Engine ===
@@ -450,6 +536,7 @@ export interface NitroLocationTracking
   updateForegroundNotification(title: string, body: string): void;
 
   // === Live Activity (iOS Dynamic Island / Lock Screen) ===
+  /** @deprecated Use `startLiveActivityWithContent` (fully dynamic content). */
   startLiveActivity(
     orderId: string,
     customerName: string,
@@ -460,13 +547,38 @@ export interface NitroLocationTracking
     estimatedMinutes: number,
     distanceMeters: number
   ): void;
+  /** @deprecated Use `updateLiveActivityWithContent`. */
   updateLiveActivity(
     status: string,
     statusText: string,
     estimatedMinutes: number,
     distanceMeters: number
   ): void;
+  /** @deprecated Use `endLiveActivityWithContent`. */
   endLiveActivity(): void;
+
+  // === Live Activity — dynamic content API (preferred) ===
+  /** true on iOS 16.2+ (Android: true — renders an ongoing notification). */
+  isLiveActivitySupported(): boolean;
+  /** false when the user disabled Live Activities / notifications for the app. */
+  areLiveActivitiesEnabled(): boolean;
+  /** true when one of this library's dynamic activities is currently alive. */
+  isLiveActivityRunning(): boolean;
+  /**
+   * Ends every existing dynamic activity, then starts a new one.
+   * Throws when Live Activities are disabled.
+   */
+  startLiveActivityWithContent(content: LiveActivityContent): void;
+  /** Replaces the whole content of the running activity. No-op if none. */
+  updateLiveActivityWithContent(content: LiveActivityContent): void;
+  /**
+   * Ends every dynamic activity. When `finalContent` is given it is shown
+   * for `dismissAfterSeconds` (default 0 = remove immediately).
+   */
+  endLiveActivityWithContent(
+    finalContent?: LiveActivityContent,
+    dismissAfterSeconds?: number
+  ): void;
 
   // === Lifecycle ===
   destroy(): void;

@@ -59,10 +59,11 @@ final class LiveActivityManager {
             )
         }
 
-        if let existing = currentActivity {
+        // End every previous activity (orphans from a crash / double start too).
+        for existing in Activity<CourierActivityAttributes>.activities {
             Task { await existing.end(nil, dismissalPolicy: .immediate) }
-            currentActivity = nil
         }
+        currentActivity = nil
 
         let attributes = CourierActivityAttributes(
             orderId: orderId,
@@ -103,13 +104,12 @@ final class LiveActivityManager {
     }
 
     func end() {
-        // Recover orphaned reference if the app was restarted between start and end.
-        if currentActivity == nil {
-            currentActivity = Activity<CourierActivityAttributes>.activities.first
-        }
-        guard let activity = currentActivity else { return }
+        // End every activity, not just the tracked one, so no orphaned card
+        // stays stuck on the Lock Screen after a crash or double start.
         currentActivity = nil
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        for activity in Activity<CourierActivityAttributes>.activities {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 }
 

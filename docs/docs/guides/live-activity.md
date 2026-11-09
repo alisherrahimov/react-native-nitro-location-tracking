@@ -4,37 +4,30 @@ sidebar_position: 15
 
 # Live Activity (iOS Dynamic Island & Lock Screen · Android ongoing card)
 
-Show a live delivery card that updates in real time as the order progresses.
-One JS integration drives both platforms:
+Show a live card that updates in real time. **Everything on it is controlled
+from JS**: title, subtitle, icons (SF Symbols, emoji, or widget assets), the big
+value, a native countdown, a progress bar, the footer, colors, the compact
+Dynamic Island regions, and the tap deep link. Each field can change on every
+update. The widget has no hard-coded text, so all localization happens in JS.
 
-- **iOS** — a Live Activity on the Lock Screen and Dynamic Island (16.2+).
-- **Android** — a rich **ongoing notification** ("delivery activity" card)
-  showing the same status, ETA, distance, and address. Requires the
-  `POST_NOTIFICATIONS` permission (already declared by the library) to be
-  granted.
+- **iOS 16.2+**: Lock Screen and Dynamic Island.
+- **Android**: an ongoing notification built from the same content (needs
+  `POST_NOTIFICATIONS`).
 
-The status string maps to an emoji on both platforms (`picking_up` 📦,
-`on_the_way` 🚗, `arriving` 🏁, `delivered` ✅).
+## iOS setup (one-time)
 
-## iOS Prerequisites (one-time setup)
+1. **Create a Widget Extension**: Xcode → `File → New → Target → Widget
+   Extension`. Uncheck "Include Configuration App Intent" and set the deployment
+   target to **16.2**.
 
-1. **Create a Widget Extension** in Xcode:
-   `File → New → Target → Widget Extension` — uncheck "Include Configuration
-   App Intent"
+2. **Add two files to the widget target:**
 
-2. **Copy the widget file** from the published package into your widget
-   extension folder:
+   | File | How to add |
+   | --- | --- |
+   | `node_modules/react-native-nitro-location-tracking/ios/shared/NitroLiveActivityAttributes.swift` | **By reference.** Leave "Copy items if needed" **unticked**, so the widget and the library always compile the same struct and can't drift apart after an upgrade. |
+   | `node_modules/react-native-nitro-location-tracking/ios/widget/NitroLiveActivityWidget.swift` | By reference, or copy it if you want to change the layout. |
 
-   ```sh
-   # from your project root
-   cp node_modules/react-native-nitro-location-tracking/ios/widget/CourierWidgetLiveActivity.swift \
-      ios/YourWidgetExtension/CourierWidgetLiveActivity.swift
-   ```
-
-   Then in Xcode, add the copied file to the widget extension target's
-   **Compile Sources**.
-
-3. **Replace** the generated bundle file (`YourWidgetBundle.swift`) with:
+3. **Replace the generated bundle file:**
 
    ```swift
    import WidgetKit
@@ -43,91 +36,153 @@ The status string maps to an emoji on both platforms (`picking_up` 📦,
    @main
    struct YourWidgetBundle: WidgetBundle {
        var body: some Widget {
-           CourierWidgetLiveActivity()
+           NitroLiveActivityWidget()
        }
    }
    ```
 
-4. **Delete** the other files Xcode generated (`YourWidget.swift`,
-   `YourWidgetControl.swift`, `AppIntent.swift`).
+   Delete the other generated templates.
 
-5. **Add to your main app's `Info.plist`**:
+4. **In the main app's `Info.plist`:**
 
    ```xml
    <key>NSSupportsLiveActivities</key>
    <true/>
    ```
 
-6. **Verify embedding**: Main app target → **General** → **Frameworks,
-   Libraries, and Embedded Content** → your `.appex` should be listed as
-   **Embed Without Signing**.
+5. **Deep links:** register your URL scheme on the app and pass the full URL in
+   `deepLinkUrl`.
 
-7. On the device, go to **Settings → [Your App] → Live Activities** and make
-   sure it is **ON**.
+6. **Asset icons** (`type: 'asset'`) are loaded from the **widget extension's**
+   `Assets.xcassets`, because the widget can't read the app's asset catalog.
 
 :::warning
-Live Activities do not work in the iOS Simulator. Test on a real device
-running iOS 16.2+. Dynamic Island UI requires iPhone 14 Pro or later.
+Live Activities run in the iOS Simulator (pick an iPhone 14 Pro or newer for
+the Dynamic Island), but check the final look and update behaviour on a real
+device with iOS 16.2+.
 :::
 
 ## Usage
 
 ```tsx
-import NitroLocation, {
-  isLiveActivitySupported,
-} from 'react-native-nitro-location-tracking';
-import type { LiveActivityState } from 'react-native-nitro-location-tracking';
+import { LiveActivity } from 'react-native-nitro-location-tracking';
+import type { LiveActivityContent } from 'react-native-nitro-location-tracking';
 
-// Guard — only call on iOS
-if (!isLiveActivitySupported()) return;
+function contentFor(order: Order, t: TFunction): LiveActivityContent {
+  return {
+    title: t('liveActivity.onTheWay'),
+    subtitle: `#${order.number}`,
+    icon: { type: 'symbol', name: 'car.fill', color: '#1E88E5' },
 
-// Start a Live Activity
-try {
-  NitroLocation.startLiveActivity(
-    'ORD-9981',           // orderId
-    'John Doe',           // customerName
-    '42 Elm Street',      // deliveryAddress
-    2,                    // orderCount
-    'picking_up',         // status
-    'Picking up order',   // statusText (localised label shown on widget)
-    18,                   // estimatedMinutes
-    4500                  // distanceMeters
-  );
-} catch (e) {
-  // Thrown when Live Activities are disabled in Settings
-  Alert.alert('Live Activity', String(e));
+    // Native countdown: keeps ticking while JS is suspended or the app is killed.
+    timerEndEpochMs: order.deadline.getTime(),
+    secondaryValue: formatDistance(order.distanceMeters), // "2.4 km" / "2,4 км"
+
+    footerText: order.street,
+    footerIcon: { type: 'symbol', name: 'mappin.and.ellipse' },
+    footerTrailingText: t('liveActivity.orders', { count: order.tripCount }),
+
+    progress: order.progress, // 0…1, optional
+    accentColor: '#1E88E5',
+
+    // Dynamic Island compact regions (optional, see defaults below)
+    compactLeading: { icon: { type: 'symbol', name: 'car.fill' } },
+    compactTrailing: { timerEndEpochMs: order.deadline.getTime() },
+
+    staleText: t('liveActivity.updating'),
+    deepLinkUrl: `myapp://delivery/${order.id}`,
+  };
 }
 
-// Update as the delivery progresses
-const nextState: LiveActivityState = {
-  status: 'on_the_way',
-  statusText: 'On the way',
-  estimatedMinutes: 12,
-  distanceMeters: 2800,
-};
-NitroLocation.updateLiveActivity(
-  nextState.status,
-  nextState.statusText,
-  nextState.estimatedMinutes,
-  nextState.distanceMeters
-);
+if (LiveActivity.isSupported() && LiveActivity.areEnabled()) {
+  try {
+    LiveActivity.start(contentFor(order, t));
+  } catch (e) {
+    console.warn('[LiveActivity] start failed', e); // disabled in Settings
+  }
+}
 
-// End when delivered
-NitroLocation.endLiveActivity();
+// Any field can change, including the order the card shows.
+LiveActivity.update(contentFor(nextOrder, t)); // identical payloads are skipped
+
+// Show a final state for 5 s, then dismiss.
+LiveActivity.end({
+  finalContent: {
+    title: t('liveActivity.delivered'),
+    icon: { type: 'emoji', name: '✅' },
+  },
+  dismissAfterSeconds: 5,
+});
+
+// Cold start: kill orphans when nothing is active.
+if (LiveActivity.isRunning() && !hasActiveOrders) LiveActivity.end();
 ```
 
-**Status values and their meaning:**
+## `LiveActivityContent`
 
-| `status`     | Widget emoji | Typical use                   |
-| ------------ | ------------ | ------------------------------ |
-| `picking_up` | 📦           | Courier heading to restaurant |
-| `on_the_way` | 🚗           | En route to customer          |
-| `arriving`   | 🏁           | Less than ~1 min away         |
-| `delivered`  | ✅           | Order handed over             |
+Only `title` is required. Omitted fields are hidden.
 
-**Platform behavior:**
+| Field | Type | Where it shows |
+| --- | --- | --- |
+| `title` | `string` | Main line |
+| `subtitle` | `string` | Under the title |
+| `icon` | `LiveActivityIcon` | Leading icon. Also the default for compact leading and minimal |
+| `value` / `valueUnit` | `string` | Big trailing value, e.g. `"12"` `"min"` |
+| `timerEndEpochMs` | `number` | Native countdown in place of `value` |
+| `secondaryValue` | `string` | Small line under the value, e.g. `"2.4 km"` |
+| `footerText` / `footerIcon` / `footerTrailingText` | | Bottom row |
+| `progress` | `number` 0…1 | Progress bar |
+| `accentColor` / `backgroundColor` / `textColor` / `secondaryTextColor` | hex | Colors (`#RRGGBB` or `#RRGGBBAA`) |
+| `compactLeading` / `compactTrailing` / `minimal` | `LiveActivitySlot` | Dynamic Island compact regions |
+| `staleText` | `string` | Replaces the value once the content goes stale |
+| `deepLinkUrl` | `string` | Opened on tap |
+| `staleAfterSeconds` | `number` | Default 3600. After this, iOS marks the content stale |
+| `relevanceScore` | `number` | iOS ordering when several activities are visible |
 
-| Platform  | Behavior                                                |
-| --------- | -------------------------------------------------------- |
-| iOS 16.2+ | Shows on Lock Screen; Dynamic Island on iPhone 14 Pro+  |
-| Android   | Ongoing notification card — safe to call cross-platform |
+`LiveActivityIcon = { type: 'symbol' | 'emoji' | 'asset'; name: string; color?: string }`
+
+`LiveActivitySlot = { text?; icon?; timerEndEpochMs?; color? }`. When several
+fields are set, the widget uses the first one present in this order: timer,
+then text, then icon.
+
+Default compact regions when you don't set them:
+
+| Region | Default |
+| --- | --- |
+| compact leading | `icon` |
+| compact trailing | countdown, otherwise `value valueUnit` |
+| minimal | countdown, otherwise `value`, otherwise `icon` |
+
+## `LiveActivity` API
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `isSupported()` | `boolean` | iOS 16.2+, and always `true` on Android |
+| `areEnabled()` | `boolean` | `false` when the user turned off Live Activities (iOS) or notifications (Android) |
+| `isRunning()` | `boolean` | Survives app restarts on iOS. Use it to reconcile on cold start |
+| `start(content)` | `void` | Ends all previous activities first. Throws when disabled |
+| `update(content)` | `boolean` | Replaces all content. Returns `false` when the payload is identical to the last one |
+| `end({ finalContent?, dismissAfterSeconds? })` | `void` | Ends every activity, including orphans left by a crash |
+
+The raw native methods are also available on the default export:
+`startLiveActivityWithContent`, `updateLiveActivityWithContent`,
+`endLiveActivityWithContent`, `isLiveActivitySupported`,
+`areLiveActivitiesEnabled`, and `isLiveActivityRunning`.
+
+## Tips
+
+- **Throttle updates.** ActivityKit rate-limits them. Push an update when the
+  status changes, when the shown minute changes, or when the distance moves
+  ≥ 100 m. Use `timerEndEpochMs` rather than pushing minutes every tick.
+- **Privacy.** The Lock Screen is visible without unlocking the phone. Don't put
+  customer names or phone numbers in the content.
+- The content is limited to **4 KB** by ActivityKit. Keep strings short.
+
+## Legacy API (deprecated)
+
+`startLiveActivity(orderId, customerName, …)`, `updateLiveActivity(…)` and
+`endLiveActivity()` still work with the old
+`ios/widget/CourierWidgetLiveActivity.swift` template. That template has fixed
+English labels, a hard-coded `nitrolocation://` deep link, and emoji chosen by
+`status`. New integrations should use `LiveActivity`. The two APIs use
+different activity types, so they don't interfere with each other.

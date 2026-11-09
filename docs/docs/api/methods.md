@@ -63,9 +63,15 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | `getLocationPermissionStatus()` | `PermissionStatus` | Check current location permission without prompting |
 | `requestLocationPermission()` | `Promise<PermissionStatus>` | Request location permission and return the resulting status |
 | `onPermissionStatusChange(callback)` | `void` | Register a callback that fires when location permission status changes |
-| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | Start a live delivery card — Lock Screen / Dynamic Island (iOS 16.2+) or an ongoing notification (Android) |
-| `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | Push a state update to the running Live Activity |
-| `endLiveActivity()` | `void` | End and dismiss the Live Activity immediately |
+| `startLiveActivityWithContent(content)`      | `void`                      | Start a fully dynamic Live Activity (ends previous ones). Throws when disabled. Prefer `LiveActivity.start` |
+| `updateLiveActivityWithContent(content)`     | `void`                      | Replace the whole content of the running activity                                        |
+| `endLiveActivityWithContent(finalContent?, dismissAfterSeconds?)` | `void` | End every activity, optionally showing a final state first                         |
+| `isLiveActivitySupported()`                  | `boolean`                   | iOS 16.2+ (Android: `true`, ongoing notification)                                        |
+| `areLiveActivitiesEnabled()`                 | `boolean`                   | `false` when Live Activities / notifications are turned off for the app                 |
+| `isLiveActivityRunning()`                    | `boolean`                   | Whether a dynamic activity is alive (survives app restarts on iOS)                       |
+| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | **Deprecated.** Legacy fixed-layout delivery card |
+| `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | **Deprecated.** Push a state update to the legacy card |
+| `endLiveActivity()` | `void` | **Deprecated.** End the legacy card |
 | `showLocalNotification(title, body)` | `void` | Show a local notification |
 | `updateForegroundNotification(title, body)` | `void` | Update the foreground service notification |
 | `destroy()` | `void` | Stop tracking and disconnect |

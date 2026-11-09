@@ -499,6 +499,53 @@ class NitroLocationTracking: HybridNitroLocationTrackingSpec {
 #endif
     }
 
+    // MARK: - Live Activity (dynamic content)
+
+    func isLiveActivitySupported() throws -> Bool {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) { return true }
+#endif
+        return false
+    }
+
+    func areLiveActivitiesEnabled() throws -> Bool {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) { return NitroLiveActivityManager.shared.areEnabled }
+#endif
+        return false
+    }
+
+    func isLiveActivityRunning() throws -> Bool {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) { return NitroLiveActivityManager.shared.isRunning }
+#endif
+        return false
+    }
+
+    func startLiveActivityWithContent(content: LiveActivityContent) throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            try NitroLiveActivityManager.shared.start(content)
+        }
+#endif
+    }
+
+    func updateLiveActivityWithContent(content: LiveActivityContent) throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            NitroLiveActivityManager.shared.update(content)
+        }
+#endif
+    }
+
+    func endLiveActivityWithContent(finalContent: LiveActivityContent?, dismissAfterSeconds: Double?) throws {
+#if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            NitroLiveActivityManager.shared.end(finalContent: finalContent, dismissAfterSeconds: dismissAfterSeconds)
+        }
+#endif
+    }
+
     // MARK: - Notifications
 
     func showLocalNotification(title: String, body: String) throws {

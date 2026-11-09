@@ -903,123 +903,50 @@ const polyline = await snapper.flush();
 
 ### Live Activity (iOS Dynamic Island & Lock Screen · Android ongoing card)
 
-Show a live delivery card that updates in real time as the order progresses. One
-JS integration drives both platforms:
+A live card on the Lock Screen and in the Dynamic Island (iOS 16.2+), or an
+ongoing notification (Android). **Everything on it is set from JS**: texts,
+icons (SF Symbol, emoji, or widget asset), colors, a native countdown,
+progress, compact island regions, and the tap deep link. Any field can change
+on any update.
 
-- **iOS** — a Live Activity on the Lock Screen and Dynamic Island (16.2+).
-- **Android** — a rich **ongoing notification** ("delivery activity" card) showing
-  the same status, ETA, distance, and address. No longer a no-op; requires the
-  `POST_NOTIFICATIONS` permission (already declared by the library) to be granted.
-
-The status string maps to an emoji on both platforms (`picking_up` 📦, `on_the_way`
-🚗, `arriving` 🏁, `delivered` ✅).
-
-#### iOS Prerequisites (one-time setup)
-
-1. **Create a Widget Extension** in Xcode:
-   `File → New → Target → Widget Extension` — uncheck "Include Configuration App Intent"
-
-2. **Copy the widget file** from the published package into your widget extension folder:
-
-   ```sh
-   # from your project root
-   cp node_modules/react-native-nitro-location-tracking/ios/widget/CourierWidgetLiveActivity.swift \
-      ios/YourWidgetExtension/CourierWidgetLiveActivity.swift
-   ```
-
-   Then in Xcode, add the copied file to the widget extension target's **Compile Sources**.
-
-3. **Replace** the generated bundle file (`YourWidgetBundle.swift`) with:
-
-   ```swift
-   import WidgetKit
-   import SwiftUI
-
-   @main
-   struct YourWidgetBundle: WidgetBundle {
-       var body: some Widget {
-           CourierWidgetLiveActivity()
-       }
-   }
-   ```
-
-4. **Delete** the other files Xcode generated (`YourWidget.swift`, `YourWidgetControl.swift`, `AppIntent.swift`).
-
-5. **Add to your main app's `Info.plist`**:
-
-   ```xml
-   <key>NSSupportsLiveActivities</key>
-   <true/>
-   ```
-
-6. **Verify embedding**: Main app target → **General** → **Frameworks, Libraries, and Embedded Content** → your `.appex` should be listed as **Embed Without Signing**.
-
-7. On the device, go to **Settings → [Your App] → Live Activities** and make sure it is **ON**.
-
-> Live Activities do not work in the iOS Simulator. Test on a real device running iOS 16.2+.
-> Dynamic Island UI requires iPhone 14 Pro or later.
-
-#### Usage
+**iOS setup:** add a Widget Extension (16.2). Add
+`ios/shared/NitroLiveActivityAttributes.swift` **by reference** (no copy) and
+`ios/widget/NitroLiveActivityWidget.swift` to it, return
+`NitroLiveActivityWidget()` from your `WidgetBundle`, and set
+`NSSupportsLiveActivities = YES` in the app `Info.plist`.
+Full steps: [Live Activity guide](https://alisherrahimov.github.io/react-native-nitro-location-tracking/docs/guides/live-activity).
 
 ```tsx
-import NitroLocation, {
-  isLiveActivitySupported,
-} from 'react-native-nitro-location-tracking';
-import type { LiveActivityState } from 'react-native-nitro-location-tracking';
+import { LiveActivity } from 'react-native-nitro-location-tracking';
 
-// Guard — only call on iOS
-if (!isLiveActivitySupported()) return;
-
-// Start a Live Activity
-try {
-  NitroLocation.startLiveActivity(
-    'ORD-9981',           // orderId
-    'John Doe',           // customerName
-    '42 Elm Street',      // deliveryAddress
-    2,                    // orderCount
-    'picking_up',         // status
-    'Picking up order',   // statusText (localised label shown on widget)
-    18,                   // estimatedMinutes
-    4500                  // distanceMeters
-  );
-} catch (e) {
-  // Thrown when Live Activities are disabled in Settings
-  Alert.alert('Live Activity', String(e));
+if (LiveActivity.isSupported() && LiveActivity.areEnabled()) {
+  LiveActivity.start({
+    title: 'В пути',
+    subtitle: '#10423',
+    icon: { type: 'symbol', name: 'car.fill', color: '#1E88E5' },
+    timerEndEpochMs: Date.now() + 12 * 60_000, // native countdown
+    secondaryValue: '2,4 км',
+    footerText: 'ул. Амира Темура, 15',
+    footerIcon: { type: 'symbol', name: 'mappin.and.ellipse' },
+    accentColor: '#1E88E5',
+    staleText: 'Обновление…',
+    deepLinkUrl: 'myapp://delivery/10423',
+  });
 }
 
-// Update as the delivery progresses
-const nextState: LiveActivityState = {
-  status: 'on_the_way',
-  statusText: 'On the way',
-  estimatedMinutes: 12,
-  distanceMeters: 2800,
-};
-NitroLocation.updateLiveActivity(
-  nextState.status,
-  nextState.statusText,
-  nextState.estimatedMinutes,
-  nextState.distanceMeters
-);
+LiveActivity.update({ title: 'Почти на месте', value: '1', valueUnit: 'мин' });
 
-// End when delivered
-NitroLocation.endLiveActivity();
+LiveActivity.end({
+  finalContent: { title: 'Доставлено', icon: { type: 'emoji', name: '✅' } },
+  dismissAfterSeconds: 5,
+});
 ```
 
-**Status values and their meaning:**
+> Live Activities run in the iOS Simulator (iPhone 14 Pro+ for the island). Verify on a real device before release.
 
-| `status`      | Widget emoji | Typical use                    |
-| ------------- | ------------ | ------------------------------ |
-| `picking_up`  | 📦           | Courier heading to restaurant  |
-| `on_the_way`  | 🚗           | En route to customer           |
-| `arriving`    | 🏁           | Less than ~1 min away          |
-| `delivered`   | ✅           | Order handed over              |
-
-**Platform behavior:**
-
-| Platform | Behavior |
-| -------- | -------- |
-| iOS 16.2+ | Shows on Lock Screen; Dynamic Island on iPhone 14 Pro+ |
-| Android   | No-op — calls are safe to make cross-platform |
+The positional `startLiveActivity` / `updateLiveActivity` / `endLiveActivity`
+API and the `CourierWidgetLiveActivity.swift` template are **deprecated** but
+still work.
 
 ## API Reference
 
@@ -1278,9 +1205,15 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | `getLocationPermissionStatus()`              | `PermissionStatus`          | Check current location permission without prompting                                      |
 | `requestLocationPermission()`                | `Promise<PermissionStatus>` | Request location permission and return the resulting status                              |
 | `onPermissionStatusChange(callback)`         | `void`                      | Register a callback that fires when location permission status changes                   |
-| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | Start a live delivery card — Lock Screen / Dynamic Island (iOS 16.2+) or an ongoing notification (Android) |
-| `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | Push a state update to the running Live Activity |
-| `endLiveActivity()`                          | `void`                      | End and dismiss the Live Activity immediately                                            |
+| `startLiveActivityWithContent(content)`      | `void`                      | Start a fully dynamic Live Activity (ends previous ones). Throws when disabled. Prefer `LiveActivity.start` |
+| `updateLiveActivityWithContent(content)`     | `void`                      | Replace the whole content of the running activity                                        |
+| `endLiveActivityWithContent(finalContent?, dismissAfterSeconds?)` | `void` | End every activity, optionally showing a final state first                         |
+| `isLiveActivitySupported()`                  | `boolean`                   | iOS 16.2+ (Android: `true`, ongoing notification)                                        |
+| `areLiveActivitiesEnabled()`                 | `boolean`                   | `false` when Live Activities / notifications are turned off for the app                 |
+| `isLiveActivityRunning()`                    | `boolean`                   | Whether a dynamic activity is alive (survives app restarts on iOS)                       |
+| `startLiveActivity(orderId, customerName, deliveryAddress, orderCount, status, statusText, estimatedMinutes, distanceMeters)` | `void` | **Deprecated.** Legacy fixed-layout delivery card |
+| `updateLiveActivity(status, statusText, estimatedMinutes, distanceMeters)` | `void` | **Deprecated.** Push a state update to the legacy card |
+| `endLiveActivity()`                          | `void`                      | **Deprecated.** End the legacy card                                                      |
 | `showLocalNotification(title, body)`         | `void`                      | Show a local notification                                                                |
 | `updateForegroundNotification(title, body)`  | `void`                      | Update the foreground service notification                                               |
 | `destroy()`                                  | `void`                      | Stop tracking and disconnect                                                             |
@@ -1293,8 +1226,10 @@ All functionality is exposed on the default export, `NitroLocationModule`.
 | `calculateBearing(from, to)`  | Calculate bearing between two coordinates (degrees, 0-360) |
 | `shortestRotation(from, to)`  | Calculate shortest rotation path to avoid spinning         |
 | `requestLocationPermission()` | Request location + notification permissions (Android)      |
-| `isLiveActivitySupported()`   | Returns `true` on iOS, `false` on Android                  |
-| `LiveActivityState`           | Type for `{ status, statusText, estimatedMinutes, distanceMeters }` passed to start/update |
+| `LiveActivity`                | Dynamic Live Activity controller: `isSupported`, `areEnabled`, `isRunning`, `start`, `update` (skips identical payloads), `end` |
+| `LiveActivityContent`         | Type of everything the card shows (texts, icons, colors, timer, deep link)                 |
+| `isLiveActivitySupported()`   | `true` on iOS 16.2+, `false` on Android                    |
+| `LiveActivityState`           | **Deprecated.** Legacy `{ status, statusText, estimatedMinutes, distanceMeters }`          |
 
 ### Pure C++ Math Engine
 
