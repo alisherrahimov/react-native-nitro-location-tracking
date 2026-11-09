@@ -8,7 +8,7 @@ PODS:
   - hermes-engine (0.14.0):
     - hermes-engine/Pre-built (= 0.14.0)
   - hermes-engine/Pre-built (0.14.0)
-  - NitroLocationTracking (0.1.31):
+  - NitroLocationTracking (0.1.32):
     - boost
     - DoubleConversion
     - fast_float
@@ -2767,7 +2767,7 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: fc8631ce6a9be7e3db1c09cfc6ef76b17707fabc
-  NitroLocationTracking: e36dd3b764d57db026bdc910dcca6a8ab90b517a
+  NitroLocationTracking: 8edeb4ae5ccc70907426b9353eaa0d76ddb1ff31
   NitroModules: ab089a25876d6510138cc21fbf2e36e872f7d607
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: 2b70c6e3abe00396cefd8913efbf6a2db01a2b36

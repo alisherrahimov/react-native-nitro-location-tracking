@@ -7,14 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0319B49882C96EFD6E4563A7 /* LiveActivityWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A767CFE1084E0EA5464E282A /* LiveActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0B3FF42F4FCEB4520098FEE4 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D154106202BD2E281134E24 /* WidgetKit.framework */; };
 		0C80B921A6F3F58F76C31292 /* libPods-NitroLocationTrackingExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-NitroLocationTrackingExample.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		4D24642930CDD165021C61F8 /* LiveActivityWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15831215B901027376FE62BE /* LiveActivityWidgetBundle.swift */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		8226194220E9503E5B6F2657 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5EDE597410F3B1DF70D2C7D /* SwiftUI.framework */; };
 		C0D75CFA89AE95A7238DBA5A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		CEF7C72E628C9042D20B1D6E /* NitroLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB75D934A3917F025F56853C /* NitroLiveActivityWidget.swift */; };
+		D9E15E6DC95FB17111D9E534 /* NitroLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41F748ADA10663ABA6DCEC13 /* NitroLiveActivityAttributes.swift */; };
+		F528C123D1887E4433C476EB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2E33B52A62160AF823511499 /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		3162F191F17C49AF753ACEC2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F287022257F56B4A0550E966;
+			remoteInfo = LiveActivityWidget;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
+		6C163CEE26270602152A95E8 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0319B49882C96EFD6E4563A7 /* LiveActivityWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F2A133D52F9CC6E300FCF0D5 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -28,18 +56,26 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0D154106202BD2E281134E24 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
 		13B07F961A680F5B00A75B9A /* NitroLocationTrackingExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NitroLocationTrackingExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = NitroLocationTrackingExample/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = NitroLocationTrackingExample/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = NitroLocationTrackingExample/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		15831215B901027376FE62BE /* LiveActivityWidgetBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityWidgetBundle.swift; sourceTree = "<group>"; };
+		2E33B52A62160AF823511499 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		3B4392A12AC88292D35C810B /* Pods-NitroLocationTrackingExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NitroLocationTrackingExample.debug.xcconfig"; path = "Target Support Files/Pods-NitroLocationTrackingExample/Pods-NitroLocationTrackingExample.debug.xcconfig"; sourceTree = "<group>"; };
+		41F748ADA10663ABA6DCEC13 /* NitroLiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NitroLiveActivityAttributes.swift; path = ios/shared/NitroLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		51322D8EBC0D224E30873EF5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-NitroLocationTrackingExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NitroLocationTrackingExample.release.xcconfig"; path = "Target Support Files/Pods-NitroLocationTrackingExample/Pods-NitroLocationTrackingExample.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-NitroLocationTrackingExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-NitroLocationTrackingExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = NitroLocationTrackingExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = NitroLocationTrackingExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A767CFE1084E0EA5464E282A /* LiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; name = LiveActivityWidget.appex; path = LiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5EDE597410F3B1DF70D2C7D /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F2A133C02F9CC6E100FCF0D5 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		F2A133C22F9CC6E100FCF0D5 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		FB75D934A3917F025F56853C /* NitroLiveActivityWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NitroLiveActivityWidget.swift; path = ios/widget/NitroLiveActivityWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,9 +87,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CDC247659EBDE7F32E92FD08 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F528C123D1887E4433C476EB /* Foundation.framework in Frameworks */,
+				0B3FF42F4FCEB4520098FEE4 /* WidgetKit.framework in Frameworks */,
+				8226194220E9503E5B6F2657 /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0B4EA8C510298C99E369A693 /* LiveActivityWidget */ = {
+			isa = PBXGroup;
+			children = (
+				15831215B901027376FE62BE /* LiveActivityWidgetBundle.swift */,
+				51322D8EBC0D224E30873EF5 /* Info.plist */,
+			);
+			name = LiveActivityWidget;
+			path = LiveActivityWidget;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* NitroLocationTrackingExample */ = {
 			isa = PBXGroup;
 			children = (
@@ -73,6 +129,7 @@
 				5DCACB8F33CDC322A6C60F78 /* libPods-NitroLocationTrackingExample.a */,
 				F2A133C02F9CC6E100FCF0D5 /* WidgetKit.framework */,
 				F2A133C22F9CC6E100FCF0D5 /* SwiftUI.framework */,
+				8DF08ED8229169F0B002FD5F /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -92,6 +149,8 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				0B4EA8C510298C99E369A693 /* LiveActivityWidget */,
+				F3C91C07DC5FA6E641E67E94 /* NitroLiveActivity (library) */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -102,8 +161,19 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* NitroLocationTrackingExample.app */,
+				A767CFE1084E0EA5464E282A /* LiveActivityWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8DF08ED8229169F0B002FD5F /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				2E33B52A62160AF823511499 /* Foundation.framework */,
+				0D154106202BD2E281134E24 /* WidgetKit.framework */,
+				B5EDE597410F3B1DF70D2C7D /* SwiftUI.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -113,6 +183,16 @@
 				5709B34CF0A7D63546082F79 /* Pods-NitroLocationTrackingExample.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		F3C91C07DC5FA6E641E67E94 /* NitroLiveActivity (library) */ = {
+			isa = PBXGroup;
+			children = (
+				41F748ADA10663ABA6DCEC13 /* NitroLiveActivityAttributes.swift */,
+				FB75D934A3917F025F56853C /* NitroLiveActivityWidget.swift */,
+			);
+			name = "NitroLiveActivity (library)";
+			path = ../..;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -130,15 +210,34 @@
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
 				F2A133D52F9CC6E300FCF0D5 /* Embed Foundation Extensions */,
+				6C163CEE26270602152A95E8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A6D4D72ED30AC8FDE3C8CACC /* PBXTargetDependency */,
 			);
 			name = NitroLocationTrackingExample;
 			productName = NitroLocationTrackingExample;
 			productReference = 13B07F961A680F5B00A75B9A /* NitroLocationTrackingExample.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F287022257F56B4A0550E966 /* LiveActivityWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 01B1BDB9C37390E9BC8F650D /* Build configuration list for PBXNativeTarget "LiveActivityWidget" */;
+			buildPhases = (
+				3D27F7FEB51853330AA24CDE /* Sources */,
+				CDC247659EBDE7F32E92FD08 /* Frameworks */,
+				85428A91A9830213F0727721 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LiveActivityWidget;
+			productName = LiveActivityWidget;
+			productReference = A767CFE1084E0EA5464E282A /* LiveActivityWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -168,6 +267,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* NitroLocationTrackingExample */,
+				F287022257F56B4A0550E966 /* LiveActivityWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -180,6 +280,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				C0D75CFA89AE95A7238DBA5A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		85428A91A9830213F0727721 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,7 +376,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3D27F7FEB51853330AA24CDE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D24642930CDD165021C61F8 /* LiveActivityWidgetBundle.swift in Sources */,
+				D9E15E6DC95FB17111D9E534 /* NitroLiveActivityAttributes.swift in Sources */,
+				CEF7C72E628C9042D20B1D6E /* NitroLiveActivityWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A6D4D72ED30AC8FDE3C8CACC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LiveActivityWidget;
+			target = F287022257F56B4A0550E966 /* LiveActivityWidget */;
+			targetProxy = 3162F191F17C49AF753ACEC2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -327,6 +453,32 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		4CBA2F1B318F422DD92A54EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Z9K4662Q5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LiveActivityWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LiveActivityWidget;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nitrolocationtracking.example.LiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -474,9 +626,45 @@
 			};
 			name = Release;
 		};
+		8DA1ECD8355587EF87C7285B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Z9K4662Q5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LiveActivityWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LiveActivityWidget;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nitrolocationtracking.example.LiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		01B1BDB9C37390E9BC8F650D /* Build configuration list for PBXNativeTarget "LiveActivityWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8DA1ECD8355587EF87C7285B /* Release */,
+				4CBA2F1B318F422DD92A54EE /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "NitroLocationTrackingExample" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
